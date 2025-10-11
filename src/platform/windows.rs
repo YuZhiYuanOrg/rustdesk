@@ -2658,13 +2658,6 @@ pub fn update_me(debug: bool) -> ResultType<()> {
         .flatten()
         .collect::<Vec<_>>();
     kill_process_by_pids(&app_exe_name, main_window_pids)?;
-    let tray_pids = crate::platform::get_pids_of_process_with_args(&app_exe_name, &["--tray"]);
-    let tray_sessions = tray_pids
-        .iter()
-        .map(|pid| get_session_id_of_process(pid.as_u32()))
-        .flatten()
-        .collect::<Vec<_>>();
-    kill_process_by_pids(&app_exe_name, tray_pids)?;
     let is_service_running = is_self_service_running();
 
     let mut version_major = "0";
@@ -2749,20 +2742,6 @@ taskkill /F /IM {app_name}.exe{filter}
     run_cmds(cmds, debug, "update")?;
 
     std::thread::sleep(std::time::Duration::from_millis(2000));
-    if tray_sessions.is_empty() {
-        log::info!("No tray process found.");
-    } else {
-        log::info!("Try to restore the tray process...");
-        log::info!(
-            "Try to restore the tray process..., sessions: {:?}",
-            &tray_sessions
-        );
-        for s in tray_sessions {
-            if s != 0 {
-                allow_err!(run_exe_in_session(&exe, vec!["--tray"], s, true));
-            }
-        }
-    }
     if main_window_sessions.is_empty() {
         log::info!("No main window process found.");
     } else {
