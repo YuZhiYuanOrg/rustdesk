@@ -2789,7 +2789,7 @@ fn kill_process_by_pids(name: &str, pids: Vec<Pid>) -> ResultType<()> {
 pub fn update_me_msi(msi: &str, quiet: bool) -> ResultType<()> {
     let cmds = format!(
         "chcp 65001 && msiexec /i {msi} {}",
-        if quiet { "/qn LAUNCH_TRAY_APP=N" } else { "" }
+        if quiet { "/qn" } else { "" }
     );
     run_cmds(cmds, false, "update-msi")?;
     Ok(())
