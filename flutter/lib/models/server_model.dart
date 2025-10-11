@@ -169,7 +169,6 @@ class ServerModel with ChangeNotifier {
             }
           } else {
             _zeroClientLengthCounter = 0;
-            if (!hideCm) showCmWindow();
           }
         }
       }
@@ -542,8 +541,6 @@ class ServerModel with ChangeNotifier {
     if (desktopType == DesktopType.cm) {
       if (_clients.isEmpty) {
         hideCmWindow();
-      } else if (!hideCm) {
-        showCmWindow();
       }
     }
     if (_clients.length != oldClientLenght) {
@@ -576,9 +573,6 @@ class ServerModel with ChangeNotifier {
       if (index_disconnected >= 0) {
         _clients.removeAt(index_disconnected);
         tabController.remove(index_disconnected);
-      }
-      if (desktopType == DesktopType.cm && !hideCm) {
-        showCmWindow();
       }
       scrollToBottom();
       notifyListeners();
