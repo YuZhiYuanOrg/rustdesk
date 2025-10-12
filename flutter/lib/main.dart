@@ -302,7 +302,6 @@ void runConnectionManagerScreen() async {
 
 bool _isCmReadyToShow = false;
 
-
 hideCmWindow({bool isStartup = false}) async {
   if (isStartup) {
     WindowOptions windowOptions = getHiddenTitleBarWindowOptions(
