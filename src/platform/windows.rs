@@ -92,8 +92,6 @@ pub const FLUTTER_RUNNER_WIN32_WINDOW_CLASS: &'static str = "FLUTTER_RUNNER_WIN3
 pub const EXPLORER_EXE: &'static str = "explorer.exe";
 pub const SET_FOREGROUND_WINDOW: &'static str = "SET_FOREGROUND_WINDOW";
 
-const REG_NAME_INSTALL_DESKTOPSHORTCUTS: &str = "DESKTOPSHORTCUTS";
-const REG_NAME_INSTALL_STARTMENUSHORTCUTS: &str = "STARTMENUSHORTCUTS";
 pub const REG_NAME_INSTALL_PRINTER: &str = "PRINTER";
 
 pub fn get_focused_display(displays: Vec<DisplayInfo>) -> Option<usize> {
@@ -1154,14 +1152,6 @@ pub fn get_install_options() -> String {
     let subkey = format!(".{}", app_name.to_lowercase());
     let mut opts = HashMap::new();
 
-    let desktop_shortcuts = get_reg_of_hkcr(&subkey, REG_NAME_INSTALL_DESKTOPSHORTCUTS);
-    if let Some(desktop_shortcuts) = desktop_shortcuts {
-        opts.insert(REG_NAME_INSTALL_DESKTOPSHORTCUTS, desktop_shortcuts);
-    }
-    let start_menu_shortcuts = get_reg_of_hkcr(&subkey, REG_NAME_INSTALL_STARTMENUSHORTCUTS);
-    if let Some(start_menu_shortcuts) = start_menu_shortcuts {
-        opts.insert(REG_NAME_INSTALL_STARTMENUSHORTCUTS, start_menu_shortcuts);
-    }
     let printer = get_reg_of_hkcr(&subkey, REG_NAME_INSTALL_PRINTER);
     if let Some(printer) = printer {
         opts.insert(REG_NAME_INSTALL_PRINTER, printer);
@@ -1289,8 +1279,6 @@ pub fn copy_exe_cmd(src_exe: &str, exe: &str, path: &str) -> ResultType<String> 
 
 fn get_after_install(
     exe: &str,
-    reg_value_start_menu_shortcuts: Option<String>,
-    reg_value_desktop_shortcuts: Option<String>,
     reg_value_printer: Option<String>,
 ) -> String {
     let app_name = crate::get_app_name();
@@ -1303,18 +1291,6 @@ fn get_after_install(
     hcu.delete_subkey_all(format!("Software\\Classes\\{}", exe))
         .ok();
 
-    let desktop_shortcuts = reg_value_desktop_shortcuts
-        .map(|v| {
-            format!("reg add HKEY_CLASSES_ROOT\\.{ext} /f /v {REG_NAME_INSTALL_DESKTOPSHORTCUTS} /t REG_SZ /d \"{v}\"")
-        })
-        .unwrap_or_default();
-    let start_menu_shortcuts = reg_value_start_menu_shortcuts
-        .map(|v| {
-            format!(
-                "reg add HKEY_CLASSES_ROOT\\.{ext} /f /v {REG_NAME_INSTALL_STARTMENUSHORTCUTS} /t REG_SZ /d \"{v}\""
-            )
-        })
-        .unwrap_or_default();
     let reg_printer = reg_value_printer
         .map(|v| {
             format!(
@@ -1326,8 +1302,6 @@ fn get_after_install(
     format!("
     chcp 65001
     reg add HKEY_CLASSES_ROOT\\.{ext} /f
-    {desktop_shortcuts}
-    {start_menu_shortcuts}
     {reg_printer}
     reg add HKEY_CLASSES_ROOT\\.{ext}\\DefaultIcon /f
     reg add HKEY_CLASSES_ROOT\\.{ext}\\DefaultIcon /f /ve /t REG_SZ  /d \"\\\"{exe}\\\",0\"
@@ -1410,8 +1384,6 @@ oLink.Save
     .to_str()
     .unwrap_or("")
     .to_owned();
-    let mut reg_value_desktop_shortcuts = "0".to_owned();
-    let mut reg_value_start_menu_shortcuts = "0".to_owned();
     let mut reg_value_printer = "0".to_owned();
     let install_printer = options.contains("printer") && is_win_10_or_greater();
     if install_printer {
@@ -1488,8 +1460,6 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{path}\\\"
         build_date = crate::BUILD_DATE,
         after_install = get_after_install(
             &exe,
-            Some(reg_value_start_menu_shortcuts),
-            Some(reg_value_desktop_shortcuts),
             Some(reg_value_printer)
         ),
         sleep = if debug { "timeout 300" } else { "" },
@@ -1505,7 +1475,7 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{path}\\\"
 pub fn run_after_install() -> ResultType<()> {
     let (_, _, _, exe) = get_install_info();
     run_cmds(
-        get_after_install(&exe, None, None, None),
+        get_after_install(&exe, None),
         true,
         "after_install",
     )
