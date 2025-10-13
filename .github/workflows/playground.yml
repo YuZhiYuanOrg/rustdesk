@@ -165,7 +165,7 @@ jobs:
           $VCPKG_ROOT/vcpkg install --x-install-root="$VCPKG_ROOT/installed"
           
       - name: Restore from cache and install vcpkg
-        uses: lukka/run-vcpkg@v7
+        uses: lukka/run-vcpkg@v11
         if: false
         with:
           setupOnly: true
