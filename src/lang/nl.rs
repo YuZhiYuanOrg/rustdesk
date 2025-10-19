@@ -714,10 +714,12 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Custom scale slider", "Aangepaste schuifregelaar voor schaal"),
         ("Decrease", "Verlagen"),
         ("Increase", "Verhogen"),
-        ("Show virtual mouse", ""),
-        ("Virtual mouse size", ""),
-        ("Small", ""),
-        ("Large", ""),
-        ("Show virtual joystick", ""),
+        ("Show virtual mouse", "Virtuele muis weergeven"),
+        ("Virtual mouse size", "Virtuele muis grootte"),
+        ("Small", "Klein"),
+        ("Large", "Groot"),
+        ("Show virtual joystick", "Virtuele joystick weergeven"),
+        ("Edit note", "Opmerking bewerken"),
+        ("Alias", "Alias"),
     ].iter().cloned().collect();
 }
