@@ -316,9 +316,6 @@ pub fn core_main() -> Option<Vec<String>> {
                 return None;
             }
         } else if args[0] == "--tray" {
-            if !crate::check_process("--tray", true) {
-                crate::tray::start_tray();
-            }
             return None;
         } else if args[0] == "--install-service" {
             log::info!("start --install-service");
