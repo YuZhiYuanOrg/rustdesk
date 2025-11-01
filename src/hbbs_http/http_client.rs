@@ -9,34 +9,40 @@ macro_rules! configure_http_client {
         // https://github.com/rustdesk/rustdesk/issues/11569
         // https://docs.rs/reqwest/latest/reqwest/struct.ClientBuilder.html#method.no_proxy
         let mut builder = $builder.no_proxy();
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        match hbb_common::verifier::client_config() {
+            Ok(client_config) => {
+                builder = builder.use_preconfigured_tls(client_config);
+            }
+            Err(e) => {
+                hbb_common::log::error!("Failed to get client config: {}", e);
+            }
+        }
         let client = if let Some(conf) = Config::get_socks() {
             let proxy_result = Proxy::from_conf(&conf, None);
 
             match proxy_result {
                 Ok(proxy) => {
                     let proxy_setup = match &proxy.intercept {
-                        ProxyScheme::Http { host, .. } =>{ reqwest::Proxy::all(format!("http://{}", host))},
-                        ProxyScheme::Https { host, .. } => {reqwest::Proxy::all(format!("https://{}", host))},
-                        ProxyScheme::Socks5 { addr, .. } => { reqwest::Proxy::all(&format!("socks5://{}", addr)) }
+                        ProxyScheme::Http { host, .. } => {
+                            reqwest::Proxy::all(format!("http://{}", host))
+                        }
+                        ProxyScheme::Https { host, .. } => {
+                            reqwest::Proxy::all(format!("https://{}", host))
+                        }
+                        ProxyScheme::Socks5 { addr, .. } => {
+                            reqwest::Proxy::all(&format!("socks5://{}", addr))
+                        }
                     };
 
                     match proxy_setup {
-                        Ok(p) => {
-                            builder = builder.proxy(p);
+                        Ok(mut p) => {
                             if let Some(auth) = proxy.intercept.maybe_auth() {
-                                let basic_auth =
-                                    format!("Basic {}", auth.get_basic_authorization());
-                                if let Ok(auth) = basic_auth.parse() {
-                                    builder = builder.default_headers(
-                                        vec![(
-                                            reqwest::header::PROXY_AUTHORIZATION,
-                                            auth,
-                                        )]
-                                        .into_iter()
-                                        .collect(),
-                                    );
+                                if !auth.username().is_empty() && !auth.password().is_empty() {
+                                    p = p.basic_auth(auth.username(), auth.password());
                                 }
                             }
+                            builder = builder.proxy(p);
                             builder.build().unwrap_or_else(|e| {
                                 info!("Failed to create a proxied client: {}", e);
                                 <$Client>::new()
