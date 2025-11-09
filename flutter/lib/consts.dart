@@ -79,6 +79,7 @@ const String kWindowEventOpenMonitorSession = "open_monitor_session";
 
 const String kOptionViewStyle = "view_style";
 const String kOptionScrollStyle = "scroll_style";
+const String kOptionEdgeScrollEdgeThickness = "edge-scroll-edge-thickness";
 const String kOptionImageQuality = "image_quality";
 const String kOptionOpenNewConnInTabs = "enable-open-new-connections-in-tabs";
 const String kOptionTextureRender = "use-texture-render";
@@ -162,8 +163,11 @@ const String kOptionShowVirtualJoystick = "show-virtual-joystick";
 
 // network options
 const String kOptionAllowWebSocket = "allow-websocket";
+const String kOptionAllowInsecureTLSFallback = "allow-insecure-tls-fallback";
+const String kOptionDisableUdp = "disable-udp";
+const String kOptionEnableFlutterHttpOnRust = "enable-flutter-http-on-rust";
 
-// buildin opitons
+// builtin options
 const String kOptionHideServerSetting = "hide-server-settings";
 const String kOptionHideProxySetting = "hide-proxy-settings";
 const String kOptionHideWebSocketSetting = "hide-websocket-settings";
