@@ -901,63 +901,188 @@ pub fn is_modifier(evt: &KeyEvent) -> bool {
 }
 
 pub fn check_software_update() {
-    if is_custom_client() {
-        return;
-    }
-    let opt = LocalConfig::get_option(keys::OPTION_ENABLE_CHECK_UPDATE);
-    if config::option2bool(keys::OPTION_ENABLE_CHECK_UPDATE, &opt) {
-        std::thread::spawn(move || allow_err!(do_check_software_update()));
-    }
+    std::thread::spawn(move || allow_err!(do_check_software_update()));
 }
 
 // No need to check `danger_accept_invalid_cert` for now.
 // Because the url is always `https://api.rustdesk.com/version/latest`.
 #[tokio::main(flavor = "current_thread")]
 pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
-    let (request, url) =
-        hbb_common::version_check_request(hbb_common::VER_TYPE_RUSTDESK_CLIENT.to_string());
+    // 1. 函数开始执行
+    log::info!("===== 开始执行软件更新检查流程 =====");
+    
+    // 2. 生成版本检查请求和URL
+    let (request, url) = hbb_common::version_check_request(hbb_common::VER_TYPE_RUSTDESK_CLIENT.to_string());
+    log::info!("生成版本检查请求: request={:#?}, 请求URL={}", request, url);
+    
+    // 3. 获取代理配置
     let proxy_conf = Config::get_socks();
+    
+    // 4. 获取TLS专用URL
     let tls_url = get_url_for_tls(&url, &proxy_conf);
-    let tls_type = get_cached_tls_type(tls_url);
-    let is_tls_not_cached = tls_type.is_none();
-    let tls_type = tls_type.unwrap_or(TlsType::Rustls);
+    log::info!("生成TLS专用URL: tls_url={}", tls_url);
+    
+    // 5. 获取缓存的TLS类型
+    let tls_type_cached = get_cached_tls_type(tls_url.clone());
+    let is_tls_not_cached = tls_type_cached.is_none();
+    log::info!("获取缓存TLS类型: 缓存状态={}, 缓存值={:?}", 
+           if is_tls_not_cached { "未缓存" } else { "已缓存" }, 
+           tls_type_cached);
+    
+    // 6. 确定最终使用的TLS类型（默认Rustls）
+    let tls_type = tls_type_cached.unwrap_or(TlsType::Rustls);
+    log::info!("确定使用的TLS类型: {:?}", tls_type);
+    
+    // 7. 创建HTTP客户端
     let client = create_http_client_async(tls_type, false);
-    let latest_release_response = match client.post(&url).json(&request).send().await {
+    log::info!("创建异步HTTP客户端完成，TLS类型={:?}", tls_type);
+    
+    // 8. 发送版本检查POST请求
+    log::info!("开始向URL发送版本检查请求: {}", url);
+
+    // 构建请求对象但不立即发送
+    let request_builder = client.post(&url).json(&request);
+    
+    // 打印请求详细信息
+    log::info!("=== 请求详细信息 ===");
+    log::info!("请求URL: {}", url);
+    log::info!("请求方法: POST");
+    log::info!("请求头: Content-Type: application/json");
+    log::info!("请求体(JSON): {}", serde_json::to_string_pretty(&request).unwrap_or_else(|_| "无法序列化请求".to_string()));
+    
+    // 发送请求
+    let latest_release_response = match request_builder.send().await {
         Ok(resp) => {
-            upsert_tls_cache(tls_url, tls_type, false);
-            resp
+            log::info!("请求成功，响应状态码: {}", resp.status());
+            log::info!("响应头信息: {:#?}", resp.headers());
+            
+            // 更新TLS缓存
+            upsert_tls_cache(tls_url.clone(), tls_type, false);
+            log::info!("更新TLS缓存: tls_url={}, tls_type={:?}, 错误标记=false", tls_url, tls_type);
+            
+            resp  // 返回响应对象，不提前返回
         }
         Err(err) => {
+            log::error!("首次请求失败: {}", err);
+            log::info!("请求失败详情: {:#?}", err);
+            
+            // 检查是否需要切换TLS类型重试
             if is_tls_not_cached && err.is_request() {
+                log::warn!("未缓存TLS类型且请求错误，切换为NativeTls重试");
+                
+                // 切换为NativeTls创建客户端
                 let tls_type = TlsType::NativeTls;
                 let client = create_http_client_async(tls_type, false);
-                let resp = client.post(&url).json(&request).send().await?;
-                upsert_tls_cache(tls_url, tls_type, false);
-                resp
+                log::info!("重新创建HTTP客户端，TLS类型={:?}", tls_type);
+                
+                // 构建新的请求
+                let retry_request_builder = client.post(&url).json(&request);
+                
+                // 打印重试请求信息
+                log::info!("=== 重试请求详细信息 ===");
+                log::info!("重试请求URL: {}", url);
+                log::info!("重试TLS类型: {:?}", tls_type);
+                log::info!("重试请求体(JSON): {}", serde_json::to_string_pretty(&request).unwrap_or_else(|_| "无法序列化请求".to_string()));
+                
+                // 重试请求
+                match retry_request_builder.send().await {
+                    Ok(resp) => {
+                        log::info!("NativeTls重试请求成功，响应状态码: {}", resp.status());
+                        log::info!("重试响应头信息: {:#?}", resp.headers());
+                        
+                        // 更新TLS缓存
+                        upsert_tls_cache(tls_url.clone(), tls_type, false);
+                        log::info!("更新TLS缓存: tls_url={}, tls_type={:?}, 错误标记=false", tls_url, tls_type);
+                        
+                        resp  // 返回响应对象，不提前返回
+                    }
+                    Err(retry_err) => {
+                        log::error!("NativeTls重试请求也失败: {}", retry_err);
+                        log::info!("重试失败详情: {:#?}", retry_err);
+                        return Err(retry_err.into());
+                    }
+                }
             } else {
+                log::error!("无需重试，直接返回错误（非未缓存TLS/非请求错误）");
                 return Err(err.into());
             }
         }
     };
+    
+    // 9. 读取响应字节
+    log::info!("开始读取响应字节数据");
     let bytes = latest_release_response.bytes().await?;
-    let resp: hbb_common::VersionCheckResponse = serde_json::from_slice(&bytes)?;
-    let response_url = resp.url;
+    log::info!("响应字节长度: {} bytes", bytes.len());
+    
+    // 10. 反序列化版本检查响应
+    log::info!("开始反序列化VersionCheckResponse");
+    let resp: hbb_common::VersionCheckResponse = match serde_json::from_slice(&bytes) {
+        Ok(parsed) => parsed,
+        Err(deser_err) => {
+            log::error!("响应反序列化失败: {}", deser_err);
+            log::info!("反序列化失败的字节数据: {:?}", bytes);
+            return Err(deser_err.into());
+        }
+    };
+    log::info!("反序列化后的响应数据: {:#?}", resp);
+    let response_url = resp.data.download_url;
+    log::info!("解析到最新版本下载URL: {}", response_url);
+    
+    // 11. 解析最新版本号
     let latest_release_version = response_url.rsplit('/').next().unwrap_or_default();
-
-    if get_version_number(&latest_release_version) > get_version_number(crate::VERSION) {
+    log::info!("从URL解析最新版本号: {}", latest_release_version);
+    log::info!("原始URL: {}, 分割后版本号: {}", response_url, latest_release_version);
+    
+    // 12. 版本号比较
+    let current_version_num = get_version_number(crate::VERSION);
+    let latest_version_num = get_version_number(latest_release_version);
+    log::info!("版本号对比: 当前版本={}({}), 最新版本={}({})", 
+          crate::VERSION, current_version_num, 
+          latest_release_version, latest_version_num);
+    
+    if latest_version_num > current_version_num {
+        log::info!("检测到新版本！当前版本 {} < 最新版本 {}", crate::VERSION, latest_release_version);
+        
         #[cfg(feature = "flutter")]
         {
+            log::info!("准备发送Flutter全局事件: check_software_update_finish");
             let mut m = HashMap::new();
             m.insert("name", "check_software_update_finish");
             m.insert("url", &response_url);
-            if let Ok(data) = serde_json::to_string(&m) {
-                let _ = crate::flutter::push_global_event(crate::flutter::APP_TYPE_MAIN, data);
+            
+            match serde_json::to_string(&m) {
+                Ok(data) => {
+                    log::info!("Flutter事件数据: {}", data);
+                    if let Ok(data) = serde_json::to_string(&m) {
+                        let _ = crate::flutter::push_global_event(crate::flutter::APP_TYPE_MAIN, data);
+                    }
+                    log::info!("成功发送Flutter全局事件: check_software_update_finish");
+                }
+                Err(ser_err) => {
+                    log::error!("Flutter事件数据序列化失败: {}", ser_err);
+                    log::info!("待序列化的HashMap: {:#?}", m);
+                }
             }
         }
-        *SOFTWARE_UPDATE_URL.lock().unwrap() = response_url;
+        
+        // 更新全局更新URL
+        let mut update_url_lock = SOFTWARE_UPDATE_URL.lock().unwrap();
+        *update_url_lock = response_url.clone();
+        log::info!("更新全局SOFTWARE_UPDATE_URL为: {}", response_url);
+        drop(update_url_lock); // 手动释放锁（可选）
     } else {
-        *SOFTWARE_UPDATE_URL.lock().unwrap() = "".to_string();
+        log::info!("当前版本已是最新，无需更新（当前版本: {}, 最新版本: {}）", 
+              crate::VERSION, latest_release_version);
+        
+        // 清空全局更新URL
+        let mut update_url_lock = SOFTWARE_UPDATE_URL.lock().unwrap();
+        *update_url_lock = "".to_string();
+        log::info!("清空全局SOFTWARE_UPDATE_URL");
+        drop(update_url_lock);
     }
+    
+    // 13. 函数执行完成
+    log::info!("===== 软件更新检查流程执行完成 =====");
     Ok(())
 }
 
