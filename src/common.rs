@@ -970,7 +970,7 @@ pub fn check_software_update() {
             Err(e) => log::error!("首次更新检查失败: {}", e),
         }
         loop {
-            std::thread::sleep(std::time::Duration::from_secs(2 * 60 * 60));
+            std::thread::sleep(std::time::Duration::from_secs(60));
             log::info!("执行定时更新检查...");
             match do_check_software_update() {
                 Ok(_) => log::info!("定时更新检查完成"),
