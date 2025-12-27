@@ -962,21 +962,15 @@ pub fn check_software_update() {
         log::info!("检测到自定义客户端，跳过更新检查");
         return;
     }
-    let opt = LocalConfig::get_option(keys::OPTION_ENABLE_CHECK_UPDATE);
-    log::info!("获取更新检查配置选项: {:?}", opt);
-    if config::option2bool(keys::OPTION_ENABLE_CHECK_UPDATE, &opt) {
-        log::info!("更新检查已启用，启动后台检查线程");
-        std::thread::spawn(move || {
-            log::info!("更新检查线程启动");
-            match do_check_software_update() {
-                Ok(_) => log::info!("更新检查线程正常结束"),
-                Err(e) => log::error!("更新检查线程异常结束: {}", e),
-            }
-        });
-        log::info!("更新检查线程已启动");
-    } else {
-        log::info!("更新检查已禁用，跳过检查");
-    }
+    log::info!("更新检查已启用，启动后台检查线程");
+    std::thread::spawn(move || {
+        log::info!("更新检查线程启动");
+        match do_check_software_update() {
+            Ok(_) => log::info!("更新检查线程正常结束"),
+            Err(e) => log::error!("更新检查线程异常结束: {}", e),
+        }
+    });
+    log::info!("更新检查线程已启动");
 }
 
 // No need to check `danger_accept_invalid_cert` for now.
