@@ -962,12 +962,20 @@ pub fn check_software_update() {
         log::info!("检测到自定义客户端，跳过更新检查");
         return;
     }
-    log::info!("更新检查已启用，启动后台检查线程");
+    log::info!("更新检查已启用，启动后台检查线程，检查间隔: 2小时");
     std::thread::spawn(move || {
         log::info!("更新检查线程启动");
         match do_check_software_update() {
-            Ok(_) => log::info!("更新检查线程正常结束"),
-            Err(e) => log::error!("更新检查线程异常结束: {}", e),
+            Ok(_) => log::info!("首次更新检查完成"),
+            Err(e) => log::error!("首次更新检查失败: {}", e),
+        }
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(2 * 60 * 60));
+            log::info!("执行定时更新检查...");
+            match do_check_software_update() {
+                Ok(_) => log::info!("定时更新检查完成"),
+                Err(e) => log::error!("定时更新检查失败: {}", e),
+            }
         }
     });
     log::info!("更新检查线程已启动");
