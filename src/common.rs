@@ -906,8 +906,6 @@ struct VersionCheckRequest {
     #[serde(default)]
     id: String,
     #[serde(default)]
-    uuid: Vec<u8>,
-    #[serde(default)]
     os: String,
     #[serde(default)]
     os_version: String,
@@ -937,7 +935,6 @@ fn version_check_request(typ: String) -> (VersionCheckRequest, String) {
         None => "https://api.rustdesk.com/version/latest",
     };
     let id = Config::get_id();
-    let uuid = hbb_common::get_uuid();
     use hbb_common::sysinfo::System;
     let system = System::new();
     let os = system.distribution_id();
@@ -950,7 +947,6 @@ fn version_check_request(typ: String) -> (VersionCheckRequest, String) {
     (
         VersionCheckRequest {
             id,
-            uuid,
             os,
             os_version,
             arch,
@@ -963,17 +959,17 @@ fn version_check_request(typ: String) -> (VersionCheckRequest, String) {
 pub fn check_software_update() {
     log::info!("开始检查软件更新...");
     if is_custom_client() {
-        log::debug!("检测到自定义客户端，跳过更新检查");
+        log::info!("检测到自定义客户端，跳过更新检查");
         return;
     }
     let opt = LocalConfig::get_option(keys::OPTION_ENABLE_CHECK_UPDATE);
-    log::debug!("获取更新检查配置选项: {:?}", opt);
+    log::info!("获取更新检查配置选项: {:?}", opt);
     if config::option2bool(keys::OPTION_ENABLE_CHECK_UPDATE, &opt) {
         log::info!("更新检查已启用，启动后台检查线程");
         std::thread::spawn(move || {
-            log::debug!("更新检查线程启动");
+            log::info!("更新检查线程启动");
             match do_check_software_update() {
-                Ok(_) => log::debug!("更新检查线程正常结束"),
+                Ok(_) => log::info!("更新检查线程正常结束"),
                 Err(e) => log::error!("更新检查线程异常结束: {}", e),
             }
         });
@@ -989,25 +985,25 @@ pub fn check_software_update() {
 pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
     log::info!("开始执行软件更新检查...");
     let (request, url) = version_check_request(hbb_common::VER_TYPE_RUSTDESK_CLIENT.to_string());
-    log::debug!("构建版本检查请求: {:?}", request);
+    log::info!("构建版本检查请求: {:?}", request);
     log::info!("检查更新URL: {}", url);
     let proxy_conf = Config::get_socks();
-    log::debug!("获取代理配置: {:?}", proxy_conf);
+    log::info!("获取代理配置: {:?}", proxy_conf);
     let tls_url = get_url_for_tls(&url, &proxy_conf);
-    log::debug!("获取TLS缓存键: {}", tls_url);
+    log::info!("获取TLS缓存键: {}", tls_url);
     let tls_type = get_cached_tls_type(tls_url);
     let is_tls_not_cached = tls_type.is_none();
-    log::debug!("TLS缓存状态: {}", if is_tls_not_cached { "未缓存" } else { "已缓存" });
+    log::info!("TLS缓存状态: {}", if is_tls_not_cached { "未缓存" } else { "已缓存" });
     let tls_type = tls_type.unwrap_or(TlsType::Rustls);
     log::info!("使用TLS类型: {:?}", tls_type);
     let client = create_http_client_async(tls_type, false);
-    log::debug!("创建HTTP客户端完成");
+    log::info!("创建HTTP客户端完成");
     log::info!("正在向更新服务器发送请求...");
     let latest_release_response = match client.post(&url).json(&request).send().await {
         Ok(resp) => {
             log::info!("更新服务器响应成功，状态码: {}", resp.status());
             upsert_tls_cache(tls_url, tls_type, false);
-            log::debug!("TLS缓存已更新: {:?} -> {:?}", tls_url, tls_type);
+            log::info!("TLS缓存已更新: {:?} -> {:?}", tls_url, tls_type);
             resp
         }
         Err(err) => {
@@ -1015,14 +1011,14 @@ pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
             if is_tls_not_cached && err.is_request() {
                 log::info!("尝试使用备用TLS类型重新连接...");
                 let tls_type = TlsType::NativeTls;
-                log::debug!("切换到备用TLS类型: {:?}", tls_type);
+                log::info!("切换到备用TLS类型: {:?}", tls_type);
                 let client = create_http_client_async(tls_type, false);
-                log::debug!("使用备用TLS类型创建HTTP客户端");
+                log::info!("使用备用TLS类型创建HTTP客户端");
                 match client.post(&url).json(&request).send().await {
                     Ok(resp) => {
                         log::info!("备用TLS连接成功，状态码: {}", resp.status());
                         upsert_tls_cache(tls_url, tls_type, false);
-                        log::debug!("TLS缓存已更新为备用类型: {:?} -> {:?}", tls_url, tls_type);
+                        log::info!("TLS缓存已更新为备用类型: {:?} -> {:?}", tls_url, tls_type);
                         resp
                     }
                     Err(retry_err) => {
@@ -1039,7 +1035,7 @@ pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
     log::info!("正在读取响应数据...");
     let bytes = match latest_release_response.bytes().await {
         Ok(bytes) => {
-            log::debug!("成功读取响应数据，大小: {} 字节", bytes.len());
+            log::info!("成功读取响应数据，大小: {} 字节", bytes.len());
             bytes
         }
         Err(e) => {
@@ -1047,44 +1043,44 @@ pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
             return Err(e.into());
         }
     };
-    log::debug!("开始解析JSON响应...");
+    log::info!("开始解析JSON响应...");
     let resp: VersionCheckResponse = match serde_json::from_slice(&bytes) {
         Ok(resp) => {
-            log::debug!("JSON解析成功");
+            log::info!("JSON解析成功");
             resp
         }
         Err(e) => {
             log::error!("JSON解析失败: {}", e);
-            log::debug!("原始响应数据: {:?}", String::from_utf8_lossy(&bytes));
+            log::info!("原始响应数据: {:?}", String::from_utf8_lossy(&bytes));
             return Err(e.into());
         }
     };
     let response_url = resp.data.download_url;
     let latest_release_version = response_url.rsplit('/').next().unwrap_or_default();
     log::info!("获取到最新版本: {}", latest_release_version);
-    log::debug!("最新版本下载URL: {}", response_url);
+    log::info!("最新版本下载URL: {}", response_url);
     log::info!("当前客户端版本: {}", crate::VERSION);
 
     let current_version_num = get_version_number(crate::VERSION);
     let latest_version_num = get_version_number(&latest_release_version);
-    log::debug!("当前版本号(数值): {}", current_version_num);
-    log::debug!("最新版本号(数值): {}", latest_version_num);
+    log::info!("当前版本号(数值): {}", current_version_num);
+    log::info!("最新版本号(数值): {}", latest_version_num);
     if latest_version_num > current_version_num {
         log::info!("发现新版本: {} -> {}", crate::VERSION, latest_release_version);
         log::info!("新版本下载URL: {}", response_url);
         #[cfg(feature = "flutter")]
         {
-            log::debug!("Flutter功能已启用，发送更新通知事件");
+            log::info!("Flutter功能已启用，发送更新通知事件");
             let mut m = HashMap::new();
             m.insert("name", "check_software_update_finish");
             m.insert("url", &response_url);
             match serde_json::to_string(&m) {
                 Ok(data) => {
-                    log::debug!("更新事件数据序列化成功");
+                    log::info!("更新事件数据序列化成功");
                     match crate::flutter::push_global_event(crate::flutter::APP_TYPE_MAIN, data) {
-                        Some(true) => log::debug!("更新事件推送成功"),
+                        Some(true) => log::info!("更新事件推送成功"),
                         Some(false) => log::error!("更新事件推送失败"),
-                        None => log::debug!("更新事件推送返回None"),
+                        None => log::info!("更新事件推送返回None"),
                     }
                 }
                 Err(e) => {
@@ -1093,13 +1089,13 @@ pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
             }
         }
         *SOFTWARE_UPDATE_URL.lock().unwrap() = response_url.clone();
-        log::debug!("已设置软件更新URL到全局变量: {}", response_url);
+        log::info!("已设置软件更新URL到全局变量: {}", response_url);
         log::info!("更新检查完成，发现新版本");
     } else {
         log::info!("当前已是最新版本: {}", crate::VERSION);
-        log::debug!("版本比较: {} <= {}", latest_version_num, current_version_num);
+        log::info!("版本比较: {} <= {}", latest_version_num, current_version_num);
         *SOFTWARE_UPDATE_URL.lock().unwrap() = "".to_string();
-        log::debug!("已清空软件更新URL全局变量");
+        log::info!("已清空软件更新URL全局变量");
         log::info!("更新检查完成，无需更新");
     }
     log::info!("软件更新检查流程结束");
