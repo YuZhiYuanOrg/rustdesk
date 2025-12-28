@@ -927,6 +927,8 @@ struct VersionCheckResponse {
 struct VersionCheckResponseData {
     #[serde(default)]
     download_url: String,
+    #[serde(default)]
+    version: String,
 }
 
 fn version_check_request(typ: String) -> (VersionCheckRequest, String) {
@@ -1057,10 +1059,10 @@ pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
             return Err(e.into());
         }
     };
-    let response_url = resp.data.download_url;
-    let latest_release_version = response_url.rsplit('/').next().unwrap_or_default();
+    let download_url = resp.data.download_url;
+    let latest_release_version = resp.data.version;
     log::info!("获取到最新版本: {}", latest_release_version);
-    log::info!("最新版本下载URL: {}", response_url);
+    log::info!("最新版本下载URL: {}", download_url);
     log::info!("当前客户端版本: {}", crate::VERSION);
 
     let current_version_num = get_version_number(crate::VERSION);
@@ -1069,13 +1071,13 @@ pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
     log::info!("最新版本号(数值): {}", latest_version_num);
     if latest_version_num > current_version_num {
         log::info!("发现新版本: {} -> {}", crate::VERSION, latest_release_version);
-        log::info!("新版本下载URL: {}", response_url);
+        log::info!("新版本下载URL: {}", download_url);
         #[cfg(feature = "flutter")]
         {
             log::info!("Flutter功能已启用，发送更新通知事件");
             let mut m = HashMap::new();
             m.insert("name", "check_software_update_finish");
-            m.insert("url", &response_url);
+            m.insert("url", &download_url);
             match serde_json::to_string(&m) {
                 Ok(data) => {
                     log::info!("更新事件数据序列化成功");
@@ -1090,8 +1092,8 @@ pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
                 }
             }
         }
-        *SOFTWARE_UPDATE_URL.lock().unwrap() = response_url.clone();
-        log::info!("已设置软件更新URL到全局变量: {}", response_url);
+        *SOFTWARE_UPDATE_URL.lock().unwrap() = download_url.clone();
+        log::info!("已设置软件更新URL到全局变量: {}", download_url);
         log::info!("更新检查完成，发现新版本");
     } else {
         log::info!("当前已是最新版本: {}", crate::VERSION);
