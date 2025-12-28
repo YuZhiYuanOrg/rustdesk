@@ -38,6 +38,12 @@ pub fn core_main() -> Option<Vec<String>> {
         // return None to terminate the process
         return None;
     }
+    #[cfg(all(windows, not(debug_assertions)))]
+    if std::env::args().len() == 1 && !crate::platform::is_installed() && !config::is_disable_installation() {
+        log::info!("Not installed, running silent installation");
+        hbb_common::allow_err!(crate::run_me(vec!["--silent-install"]));
+        return None;
+    }
     let mut args = Vec::new();
     let mut flutter_args = Vec::new();
     let mut i = 0;
