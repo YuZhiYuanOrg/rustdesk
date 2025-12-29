@@ -11,7 +11,7 @@ on:
         default: "nightly"
       build-targets:
         type: string
-        default: "windows,macos,ios,linux,android"
+        default: '["windows","macos","ios","linux","android"]'
 
 # NOTE: F-Droid builder script 'flutter/build_fdroid.sh' reads environment
 # variables from this workflow!
