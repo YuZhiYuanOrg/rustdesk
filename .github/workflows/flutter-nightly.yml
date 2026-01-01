@@ -85,4 +85,4 @@ jobs:
     with:
       upload-artifact: ${{ inputs.upload-artifact }}
       upload-tag: ${{ inputs.upload-tag }}
-      build-targets: ${{ needs.generate-build-targets.outputs.targets }}
+      build-targets: '${{ needs.generate-build-targets.outputs.targets }}'
