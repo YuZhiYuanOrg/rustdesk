@@ -60,9 +60,6 @@ jobs:
           if [ "${{ inputs.build-ios }}" = "true" ]; then
             TARGETS="${TARGETS}ios "
           fi
-          if [ "${{ inputs.build-web }}" = "true" ]; then
-            TARGETS="${TARGETS}web "
-          fi
           
           # 如果未选择任何目标，使用默认值
           if [ -z "$TARGETS" ]; then
