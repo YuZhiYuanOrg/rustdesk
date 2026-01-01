@@ -83,7 +83,7 @@ fn start_auto_update_check() -> Sender<UpdateMsg> {
 
 fn start_auto_update_check_(rx_msg: Receiver<UpdateMsg>) {
     std::thread::sleep(Duration::from_secs(30));
-    if let Err(e) = check_update(false) {
+    if let Err(e) = check_update() {
         log::error!("Error checking for updates: {}", e);
     }
 
@@ -104,7 +104,7 @@ fn start_auto_update_check_(rx_msg: Receiver<UpdateMsg>) {
                     check_interval = RETRY_INTERVAL;
                     continue;
                 }
-                if let Err(e) = check_update(matches!(recv_res, Ok(UpdateMsg::CheckUpdate))) {
+                if let Err(e) = check_update() {
                     log::error!("Error checking for updates: {}", e);
                     check_interval = RETRY_INTERVAL;
                 } else {
@@ -117,35 +117,19 @@ fn start_auto_update_check_(rx_msg: Receiver<UpdateMsg>) {
     }
 }
 
-fn check_update(manually: bool) -> ResultType<()> {
+fn check_update() -> ResultType<()> {
     #[cfg(target_os = "windows")]
     let is_msi = crate::platform::is_msi_installed()?;
-    if !(manually || config::Config::get_bool_option(config::keys::OPTION_ALLOW_AUTO_UPDATE)) {
-        return Ok(());
-    }
     if !do_check_software_update().is_ok() {
         // ignore
         return Ok(());
     }
 
-    let update_url = crate::common::SOFTWARE_UPDATE_URL.lock().unwrap().clone();
-    if update_url.is_empty() {
+    let download_url = crate::common::SOFTWARE_UPDATE_URL.lock().unwrap().clone();
+    if download_url.is_empty() {
         log::debug!("No update available.");
     } else {
-        let download_url = update_url.replace("tag", "download");
-        let version = download_url.split('/').last().unwrap_or_default();
-        #[cfg(target_os = "windows")]
-        let download_url = if cfg!(feature = "flutter") {
-            format!(
-                "{}/rustdesk-{}-x86_64.{}",
-                download_url,
-                version,
-                if is_msi { "msi" } else { "exe" }
-            )
-        } else {
-            format!("{}/rustdesk-{}-x86-sciter.exe", download_url, version)
-        };
-        log::debug!("New version available: {}", &version);
+        log::debug!("New version available.");
         let client = create_http_client_with_url(&download_url);
         let Some(file_path) = get_download_file_from_url(&download_url) else {
             bail!("Failed to get the file path from the URL: {}", download_url);
@@ -190,16 +174,16 @@ fn check_update(manually: bool) -> ResultType<()> {
         // before the download, but not empty after the download.
         if has_no_active_conns() {
             #[cfg(target_os = "windows")]
-            update_new_version(is_msi, &version, &file_path);
+            update_new_version(is_msi, &file_path);
         }
     }
     Ok(())
 }
 
 #[cfg(target_os = "windows")]
-fn update_new_version(is_msi: bool, version: &str, file_path: &PathBuf) {
+fn update_new_version(is_msi: bool, file_path: &PathBuf) {
     log::debug!(
-        "New version is downloaded, update begin, is msi: {is_msi}, version: {version}, file: {:?}",
+        "New version is downloaded, update begin, is msi: {is_msi}, file: {:?}",
         file_path.to_str()
     );
     if let Some(p) = file_path.to_str() {
@@ -207,12 +191,11 @@ fn update_new_version(is_msi: bool, version: &str, file_path: &PathBuf) {
             if is_msi {
                 match crate::platform::update_me_msi(p, true) {
                     Ok(_) => {
-                        log::debug!("New version \"{}\" updated.", version);
+                        log::debug!("New version updated.");
                     }
                     Err(e) => {
                         log::error!(
-                            "Failed to install the new msi version  \"{}\": {}",
-                            version,
+                            "Failed to install the new msi version: {}",
                             e
                         );
                     }
@@ -224,7 +207,7 @@ fn update_new_version(is_msi: bool, version: &str, file_path: &PathBuf) {
                 ) {
                     Ok(h) => {
                         if h.is_null() {
-                            log::error!("Failed to update to the new version: {}", version);
+                            log::error!("Failed to update to the new version.");
                         }
                     }
                     Err(e) => {
