@@ -5,11 +5,62 @@ on:
     # schedule build every night
     - cron: "0 0 * * *"
   workflow_dispatch:
+    inputs:
+      build-windows:
+        description: 'Build Windows version'
+        type: boolean
+        default: true
+      build-macos:
+        description: 'Build macOS version'
+        type: boolean
+        default: true
+      build-linux:
+        description: 'Build Linux version'
+        type: boolean
+        default: true
+      build-android:
+        description: 'Build Android version'
+        type: boolean
+        default: true
+      build-ios:
+        description: 'Build iOS version'
+        type: boolean
+        default: true
+      upload-artifact:
+        description: 'Upload artifacts'
+        type: boolean
+        default: true
+      upload-tag:
+        description: 'Release tag name'
+        type: string
+        default: 'nightly'
+        required: true
 
 jobs:
+  generate-build-targets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate build targets
+        id: generate-targets
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const targets = [];
+            if (${{ inputs.build-windows }}) targets.push('windows');
+            if (${{ inputs.build-macos }}) targets.push('macos');
+            if (${{ inputs.build-linux }}) targets.push('linux');
+            if (${{ inputs.build-android }}) targets.push('android');
+            if (${{ inputs.build-ios }}) targets.push('ios');
+            if (targets.length === 0) {
+              targets.push('windows', 'macos', 'ios', 'linux', 'android');
+            }
+            core.setOutput('targets', JSON.stringify(targets));
+
   run-flutter-nightly-build:
+    needs: generate-build-targets
     uses: ./.github/workflows/flutter-build.yml
     secrets: inherit
     with:
-      upload-artifact: true
-      upload-tag: "nightly"
+      upload-artifact: ${{ inputs.upload-artifact }}
+      upload-tag: ${{ inputs.upload-tag }}
+      build-targets: ${{ needs.generate-build-targets.outputs.targets }}
