@@ -73,6 +73,8 @@ jobs:
           done
           # 去掉最后一个逗号并闭合数组
           JSON_TARGETS="${JSON_TARGETS%,}]"
+          # 在 JSON_TARGETS 前后拼接上单引号
+          JSON_TARGETS="'${JSON_TARGETS}'"
           
           echo "Selected targets: $TARGETS"
           echo "JSON targets: $JSON_TARGETS"
@@ -85,4 +87,4 @@ jobs:
     with:
       upload-artifact: ${{ inputs.upload-artifact }}
       upload-tag: ${{ inputs.upload-tag }}
-      build-targets: '${{ needs.generate-build-targets.outputs.targets }}'
+      build-targets: ${{ needs.generate-build-targets.outputs.targets }}
