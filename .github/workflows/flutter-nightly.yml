@@ -39,6 +39,8 @@ on:
 jobs:
   generate-build-targets:
     runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.generate-targets.outputs.targets }}
     steps:
       - name: Generate build targets
         id: generate-targets
