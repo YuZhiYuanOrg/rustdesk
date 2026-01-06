@@ -183,6 +183,18 @@ pub fn is_server() -> bool {
 }
 
 #[inline]
+pub fn need_fs_cm_send_files() -> bool {
+    #[cfg(windows)]
+    {
+        is_server()
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
+#[inline]
 pub fn is_main() -> bool {
     *IS_MAIN
 }
