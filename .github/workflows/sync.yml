@@ -20,7 +20,22 @@ jobs:
       - name: Configure SSH key
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY_GITEE }}
+          ssh-private-key: |
+            ${{ secrets.SSH_PRIVATE_KEY_GITEE }}
+            ${{ secrets.SSH_PRIVATE_KEY_GITCODE }}
+
+      - name: Add Gitee and GitCode to SSH known_hosts
+        run: |
+          # 1. 创建 .ssh 目录（临时环境可能不存在，避免报错）
+          mkdir -p ~/.ssh
+          # 2. 扫描 Gitee 主机公钥并追加到 known_hosts（-H 哈希化主机名，提高安全性）
+          ssh-keyscan -H gitee.com >> ~/.ssh/known_hosts
+          # 3. 扫描 GitCode 主机公钥并追加到 known_hosts
+          ssh-keyscan -H gitcode.net >> ~/.ssh/known_hosts
+          # 4. （可选）验证主机密钥是否添加成功，方便调试排查
+          echo "===== Verify known_hosts content ====="
+          cat ~/.ssh/known_hosts | grep -E "gitee.com|gitcode.net"
+        shell: /usr/bin/bash -e {0}
 
       - name: Sync to Gitee (with Gitee exclusive user info)
         run: |
@@ -29,11 +44,6 @@ jobs:
           git remote add gitee git@gitee.com:ffishh/rustdesk.git
           git push --mirror gitee
           git remote remove gitee
-
-      - name: Configure SSH key
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY_GITCODE }}
 
       - name: Sync to GitCode (with GitCode exclusive user info)
         run: |
