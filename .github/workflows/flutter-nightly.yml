@@ -26,10 +26,6 @@ on:
         description: 'Build iOS version'
         type: boolean
         default: true
-      upload-artifact:
-        description: 'Upload artifacts'
-        type: boolean
-        default: true
       upload-tag:
         description: 'Release tag name'
         type: string
@@ -87,6 +83,6 @@ jobs:
     uses: ./.github/workflows/flutter-build.yml
     secrets: inherit
     with:
-      upload-artifact: ${{ inputs.upload-artifact != 'false' }}
+      upload-artifact: true
       upload-tag: ${{ inputs.upload-tag || 'nightly' }}
       build-targets: ${{ needs.generate-build-targets.outputs.targets }}
