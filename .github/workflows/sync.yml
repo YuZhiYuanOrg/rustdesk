@@ -1,0 +1,44 @@
+name: Sync
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout master branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY_GITEE }}
+
+      - name: Sync to Gitee (with Gitee exclusive user info)
+        run: |
+          git config user.name "ffishh"
+          git config user.email "15909218+ffishh@user.noreply.gitee.com"
+          git remote add gitee git@gitee.com:ffishh/rustdesk.git
+          git push --mirror gitee
+          git remote remove gitee
+
+      - name: Configure SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY_GITCODE }}
+
+      - name: Sync to GitCode (with GitCode exclusive user info)
+        run: |
+          git config user.name "ffishh"
+          git config user.email "ffishh@noreply.gitcode.com"
+          git remote add gitcode git@gitcode.com:ffishh/rustdesk.git
+          git push --mirror gitcode
+          git remote remove gitcode
