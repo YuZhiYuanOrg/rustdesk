@@ -32,9 +32,6 @@ jobs:
           ssh-keyscan -H gitee.com >> ~/.ssh/known_hosts
           # 3. 扫描 GitCode 主机公钥并追加到 known_hosts
           ssh-keyscan -H gitcode.net >> ~/.ssh/known_hosts
-          # 4. （可选）验证主机密钥是否添加成功，方便调试排查
-          echo "===== Verify known_hosts content ====="
-          cat ~/.ssh/known_hosts | grep -E "gitee.com|gitcode.net"
         shell: /usr/bin/bash -e {0}
 
       - name: Sync to Gitee (with Gitee exclusive user info)
