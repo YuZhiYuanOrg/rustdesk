@@ -404,7 +404,6 @@ impl Client {
         } else if !contained {
             crate::refresh_rendezvous_server();
         }
-        log::info!("rendezvous server: {}", rendezvous_server);
         let mut socket = socket?;
         let my_addr = socket.local_addr();
         let mut signed_id_pk = Vec::new();
@@ -530,9 +529,8 @@ impl Client {
                     }
                     Some(rendezvous_message::Union::RelayResponse(rr)) => {
                         log::info!(
-                            "relay requested from peer, time used: {:?}, relay_server: {}",
-                            start.elapsed(),
-                            rr.relay_server
+                            "relay requested from peer, time used: {:?}",
+                            start.elapsed()
                         );
                         start = Instant::now();
                         let mut connect_futures = Vec::new();
