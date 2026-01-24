@@ -2647,8 +2647,6 @@ pub fn update_me(debug: bool) -> ResultType<()> {
 
     let reg_cmd = format!(
         "
-reg add {subkey} /f /v DisplayIcon /t REG_SZ /d \"{exe}\"
-reg add {subkey} /f /v DisplayVersion /t REG_SZ /d \"{version}\"
 reg add {subkey} /f /v Version /t REG_SZ /d \"{version}\"
 reg add {subkey} /f /v BuildDate /t REG_SZ /d \"{build_date}\"
 reg add {subkey} /f /v VersionMajor /t REG_DWORD /d {version_major}
