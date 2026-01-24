@@ -975,9 +975,7 @@ pub fn check_software_update() {
         return;
     }
     std::thread::spawn(move || {
-        match do_check_software_update() {
-            let _ = do_check_software_update();
-        }
+        let _ = do_check_software_update();
         loop {
             std::thread::sleep(std::time::Duration::from_secs(2 * 60 * 60));
             let _ = do_check_software_update();
