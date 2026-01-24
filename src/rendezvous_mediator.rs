@@ -444,9 +444,8 @@ impl RendezvousMediator {
     ) -> ResultType<()> {
         let peer_addr = AddrMangle::decode(&socket_addr);
         log::info!(
-            "create_relay requested from {:?}, relay_server: {}, uuid: {}, secure: {}",
+            "create_relay requested from {:?}, uuid: {}, secure: {}",
             peer_addr,
-            relay_server,
             uuid,
             secure,
         );
@@ -688,9 +687,8 @@ impl RendezvousMediator {
         }
         let id = Config::get_id();
         log::trace!(
-            "Register my id {:?} to rendezvous server {:?}",
+            "Register my id {:?}",
             id,
-            self.addr,
         );
         let mut msg_out = Message::new();
         let serial = Config::get_serial();

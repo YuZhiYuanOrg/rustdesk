@@ -588,10 +588,9 @@ impl Client {
         }
         let time_used = start.elapsed().as_millis() as u64;
         log::info!(
-            "{} ms used to {} punch hole, relay_server: {}, {}",
+            "{} ms used to {} punch hole, {}",
             time_used,
             punch_type,
-            relay_server,
             if is_local {
                 "is_local: true".to_owned()
             } else {
@@ -857,11 +856,10 @@ impl Client {
             let mut msg_out = RendezvousMessage::new();
             uuid = Uuid::new_v4().to_string();
             log::info!(
-                "#{} request relay attempt, id: {}, uuid: {}, relay_server: {}, secure: {}",
+                "#{} request relay attempt, id: {}, uuid: {}, secure: {}",
                 i,
                 peer,
                 uuid,
-                relay_server,
                 secure,
             );
             msg_out.set_request_relay(RequestRelay {
