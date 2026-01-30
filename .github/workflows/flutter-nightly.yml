@@ -5,11 +5,84 @@ on:
     # schedule build every night
     - cron: "0 0 * * *"
   workflow_dispatch:
+    inputs:
+      build-windows:
+        description: 'Build Windows version'
+        type: boolean
+        default: true
+      build-macos:
+        description: 'Build macOS version'
+        type: boolean
+        default: true
+      build-linux:
+        description: 'Build Linux version'
+        type: boolean
+        default: true
+      build-android:
+        description: 'Build Android version'
+        type: boolean
+        default: true
+      build-ios:
+        description: 'Build iOS version'
+        type: boolean
+        default: true
+      upload-tag:
+        description: 'Release tag name'
+        type: string
+        default: 'nightly'
+        required: true
 
 jobs:
+  generate-build-targets:
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.generate-targets.outputs.targets }}
+    steps:
+      - name: Generate build targets
+        id: generate-targets
+        run: |
+          # 使用数组收集选中的目标
+          TARGETS=""
+          if [ "${{ inputs.build-windows }}" = "true" ]; then
+            TARGETS="${TARGETS}windows "
+          fi
+          if [ "${{ inputs.build-macos }}" = "true" ]; then
+            TARGETS="${TARGETS}macos "
+          fi
+          if [ "${{ inputs.build-linux }}" = "true" ]; then
+            TARGETS="${TARGETS}linux "
+          fi
+          if [ "${{ inputs.build-android }}" = "true" ]; then
+            TARGETS="${TARGETS}android "
+          fi
+          if [ "${{ inputs.build-ios }}" = "true" ]; then
+            TARGETS="${TARGETS}ios "
+          fi
+          
+          # 如果未选择任何目标，使用默认值
+          if [ -z "$TARGETS" ]; then
+            TARGETS="windows macos ios linux android"
+          fi
+          
+          # 转换为 JSON 数组格式
+          JSON_TARGETS="["
+          for target in $TARGETS; do
+            JSON_TARGETS="${JSON_TARGETS}\"${target}\","
+          done
+          # 去掉最后一个逗号并闭合数组
+          JSON_TARGETS="${JSON_TARGETS%,}]"
+          # 在 JSON_TARGETS 前后拼接上单引号
+          JSON_TARGETS="'${JSON_TARGETS}'"
+          
+          echo "Selected targets: $TARGETS"
+          echo "JSON targets: $JSON_TARGETS"
+          echo "targets=$JSON_TARGETS" >> $GITHUB_OUTPUT
+
   run-flutter-nightly-build:
+    needs: generate-build-targets
     uses: ./.github/workflows/flutter-build.yml
     secrets: inherit
     with:
       upload-artifact: true
-      upload-tag: "nightly"
+      upload-tag: ${{ inputs.upload-tag || 'nightly' }}
+      build-targets: ${{ needs.generate-build-targets.outputs.targets }}
