@@ -975,10 +975,9 @@ pub fn check_software_update() {
         return;
     }
     std::thread::spawn(move || {
-        let _ = do_check_software_update();
         loop {
-            std::thread::sleep(std::time::Duration::from_secs(2 * 60 * 60));
             let _ = do_check_software_update();
+            std::thread::sleep(crate::updater::UPDATE_CHECK_INTERVAL);
         }
     });
 }
