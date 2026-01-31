@@ -975,12 +975,17 @@ pub fn check_software_update() {
     if is_custom_client() {
         return;
     }
-    std::thread::spawn(move || {
-        loop {
-            let _ = do_check_software_update();
-            std::thread::sleep(crate::updater::UPDATE_CHECK_INTERVAL);
-        }
-    });
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    let _ = do_check_software_update();
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
+    {
+        std::thread::spawn(move || {
+            loop {
+                let _ = do_check_software_update();
+                std::thread::sleep(crate::updater::UPDATE_CHECK_INTERVAL);
+            }
+        });
+    }
 }
 
 #[tokio::main(flavor = "current_thread")]
