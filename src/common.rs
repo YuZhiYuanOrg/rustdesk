@@ -970,7 +970,6 @@ fn version_check_request(typ: String) -> (VersionCheckRequest, String) {
     )
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn check_software_update() {
     if is_custom_client() {
         return;
