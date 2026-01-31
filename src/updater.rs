@@ -86,6 +86,8 @@ fn start_auto_update_check() -> Sender<UpdateMsg> {
 /// # 参数
 /// * `rx_msg` - 用于接收更新控制消息的通道接收端
 fn start_auto_update_check_(rx_msg: Receiver<UpdateMsg>) {
+    let logger_holder = hbb_common::init_log(false, "updater");
+
     // 初始延迟：启动后先等待5分钟再执行第一次检查
     std::thread::sleep(Duration::from_secs(60 * 5));
 

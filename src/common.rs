@@ -984,27 +984,44 @@ pub fn check_software_update() {
 
 #[tokio::main(flavor = "current_thread")]
 pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
+    log::info!("Starting software update check");
     let update_server = check_update_via_update_server().await;
     let (download_url, latest_release_version) = match update_server {
-        Ok((url, version)) => (url, version),
+        Ok((url, version)) => {
+            log::info!("Successfully checked update via update server");
+            (url, version)
+        },
         Err(update_server_err) => {
             log::warn!(
                 "Failed to check update via update server: {:?}, trying Gitee backup method",
                 update_server_err
             );
-            match check_update_via_gitee().await {
-                Ok((url, version)) => (url, version),
-                Err(gitee_err) => {
-                    log::error!("Both update server and Gitee backup method failed. Gitee error: {:?}", gitee_err);
-                    *SOFTWARE_UPDATE_URL.lock().unwrap() = "".to_string();
-                    return Ok(());
+            #[cfg(target_os = "windows")]
+            {
+                match check_update_via_gitee().await {
+                    Ok((url, version)) => {
+                        log::info!("Successfully checked update via Gitee backup");
+                        (url, version)
+                    },
+                    Err(gitee_err) => {
+                        log::error!("Both update server and Gitee backup method failed. Gitee error: {:?}", gitee_err);
+                        *SOFTWARE_UPDATE_URL.lock().unwrap() = "".to_string();
+                        return Ok(());
+                    }
                 }
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                log::error!("Gitee backup method haven't been implemented for non-Windows platforms.");
+                *SOFTWARE_UPDATE_URL.lock().unwrap() = "".to_string();
+                return Ok(());
             }
         }
     };
     let current_version_num = get_version_number(crate::VERSION);
     let latest_version_num = get_version_number(&latest_release_version);
     if latest_version_num > current_version_num {
+        log::info!("New version available: {} (current: {})", latest_release_version, crate::VERSION);
         #[cfg(feature = "flutter")]
         {
             let mut m = HashMap::new();
@@ -1016,9 +1033,12 @@ pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
             });
         }
         *SOFTWARE_UPDATE_URL.lock().unwrap() = download_url.clone();
+        log::info!("Update URL set: {}", download_url);
     } else {
+        log::info!("Software is up to date (current: {}, latest: {})", crate::VERSION, latest_release_version);
         *SOFTWARE_UPDATE_URL.lock().unwrap() = "".to_string();
     }
+    log::info!("Software update check completed successfully");
     Ok(())
 }
 
@@ -1068,6 +1088,7 @@ async fn check_update_via_update_server() -> hbb_common::ResultType<(String, Str
     Ok((resp.data.download_url, resp.data.version))
 }
 
+#[cfg(target_os = "windows")]
 async fn check_update_via_gitee() -> hbb_common::ResultType<(String, String)> {
     let client = create_http_client_async(TlsType::Rustls, false);
     let response = client
@@ -1091,6 +1112,7 @@ async fn check_update_via_gitee() -> hbb_common::ResultType<(String, String)> {
 ///
 /// # 返回值
 /// 返回构建的下载链接字符串
+#[cfg(target_os = "windows")]
 fn build_windows_download_url(update_url: &str) -> String {
     // 1. 将发布标签URL转换为下载目录URL
     let download_url = update_url.replace("tag", "download");
