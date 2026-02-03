@@ -86,14 +86,13 @@ fn start_auto_update_check() -> Sender<UpdateMsg> {
 /// # 参数
 /// * `rx_msg` - 用于接收更新控制消息的通道接收端
 fn start_auto_update_check_(rx_msg: Receiver<UpdateMsg>) {
-    let logger_holder = hbb_common::init_log(false, "updater");
-
     // 初始延迟：启动后先等待5分钟再执行第一次检查
     std::thread::sleep(Duration::from_secs(60 * 5));
 
     // 执行首次更新检查
     if let Err(e) = check_update() {
         log::error!("Error checking for updates: {}", e);
+        updater_log(&format!("Error checking for updates: {}", e));
     }
 
     // 常量定义
@@ -129,6 +128,7 @@ fn start_auto_update_check_(rx_msg: Receiver<UpdateMsg>) {
                 if let Err(e) = check_update() {
                     // 检查失败：记录错误并延长下次检查间隔
                     log::error!("Error checking for updates: {}", e);
+                    updater_log(&format!("Error checking for updates: {}", e));
                     check_interval = RETRY_INTERVAL;
                 } else {
                     // 检查成功：更新最后检查时间并恢复默认检查间隔
@@ -154,10 +154,13 @@ fn check_update() -> ResultType<()> {
     let download_url = crate::common::SOFTWARE_UPDATE_URL.lock().unwrap().clone();
     if download_url.is_empty() {
         log::debug!("No update available.");
+        updater_log("No update available.");
     } else {
         log::debug!("New version available.");
+        updater_log("New version available.");
         let client = create_http_client_with_url(&download_url);
         let Some(file_path) = get_download_file_from_url(&download_url) else {
+            updater_log(&format!("Failed to get the file path from the URL: {}", download_url));
             bail!("Failed to get the file path from the URL: {}", download_url);
         };
         let mut is_file_exists = false;
@@ -167,6 +170,7 @@ fn check_update() -> ResultType<()> {
             let file_size = std::fs::metadata(&file_path)?.len();
             let response = client.head(&download_url).send()?;
             if !response.status().is_success() {
+                updater_log(&format!("Failed to get the file size: {}", response.status()));
                 bail!("Failed to get the file size: {}", response.status());
             }
             let total_size = response
@@ -175,6 +179,7 @@ fn check_update() -> ResultType<()> {
                 .and_then(|ct_len| ct_len.to_str().ok())
                 .and_then(|ct_len| ct_len.parse::<u64>().ok());
             let Some(total_size) = total_size else {
+                updater_log("Failed to get content length");
                 bail!("Failed to get content length");
             };
             if file_size == total_size {
@@ -186,6 +191,10 @@ fn check_update() -> ResultType<()> {
         if !is_file_exists {
             let response = client.get(&download_url).send()?;
             if !response.status().is_success() {
+                updater_log(&format!(
+                    "Failed to download the new version file: {}",
+                    response.status()
+                ));
                 bail!(
                     "Failed to download the new version file: {}",
                     response.status()
@@ -212,18 +221,27 @@ fn update_new_version(is_msi: bool, file_path: &PathBuf) {
         "New version is downloaded, update begin, is msi: {is_msi}, file: {:?}",
         file_path.to_str()
     );
+    updater_log(&format!(
+        "New version is downloaded, update begin, is msi: {is_msi}, file: {:?}",
+        file_path.to_str()
+    ));
     if let Some(p) = file_path.to_str() {
         if let Some(session_id) = crate::platform::get_current_process_session_id() {
             if is_msi {
                 match crate::platform::update_me_msi(p, true) {
                     Ok(_) => {
                         log::debug!("New version updated.");
+                        updater_log("New version updated.");
                     }
                     Err(e) => {
                         log::error!(
                             "Failed to install the new msi version: {}",
                             e
                         );
+                        updater_log(&format!(
+                            "Failed to install the new msi version: {}",
+                            e
+                        ));
                     }
                 }
             } else {
@@ -234,10 +252,12 @@ fn update_new_version(is_msi: bool, file_path: &PathBuf) {
                     Ok(h) => {
                         if h.is_null() {
                             log::error!("Failed to update to the new version.");
+                            updater_log("Failed to update to the new version.");
                         }
                     }
                     Err(e) => {
                         log::error!("Failed to run the new version: {}", e);
+                        updater_log(&format!("Failed to run the new version: {}", e));
                     }
                 }
             }
@@ -246,6 +266,10 @@ fn update_new_version(is_msi: bool, file_path: &PathBuf) {
                 "Failed to get the current process session id, Error {}",
                 std::io::Error::last_os_error()
             );
+            updater_log(&format!(
+                "Failed to get the current process session id, Error {}",
+                std::io::Error::last_os_error()
+            ));
         }
     } else {
         // unreachable!()
@@ -253,10 +277,46 @@ fn update_new_version(is_msi: bool, file_path: &PathBuf) {
             "Failed to convert the file path to string: {}",
             file_path.display()
         );
+        updater_log(&format!(
+            "Failed to convert the file path to string: {}",
+            file_path.display()
+        ));
     }
 }
 
 pub fn get_download_file_from_url(url: &str) -> Option<PathBuf> {
     let filename = url.split('/').last()?;
     Some(std::env::temp_dir().join(filename))
+}
+
+/// 更新服务日志记录函数
+///
+/// # 参数
+/// - `msg`: 要记录的日志消息
+fn updater_log(msg: &str) {
+    // 获取日志目录路径
+    let path = hbb_common::config::Config::log_path();
+
+    // 创建日志目录（如果不存在）
+    if let Err(e) = std::fs::create_dir_all(&path) {
+        eprintln!("Failed to create log directory {:?}: {}", path, e);
+        return;
+    }
+
+    // 构建完整的日志文件路径
+    let log_path = path.join("updater.log");
+
+    // 以追加模式打开日志文件（如果不存在则创建）
+    if let Ok(mut file) =  std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+    {
+        // 获取当前本地时间
+        let now = chrono::Local::now();
+
+        // 将带时间戳的日志信息写入文件
+        // 格式：[YYYY-MM-DD HH:MM:SS] 日志消息
+        let _ = writeln!(file, "[{}] {}", now.format("%Y-%m-%d %H:%M:%S"), msg);
+    }
 }
