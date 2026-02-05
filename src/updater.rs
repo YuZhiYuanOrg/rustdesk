@@ -22,7 +22,7 @@ lazy_static::lazy_static! {
 
 static CONTROLLING_SESSION_COUNT: AtomicUsize = AtomicUsize::new(0);
 
-const DUR_TWO_HOUR: Duration = Duration::from_secs(60 * 60 * 2);
+pub const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(60 * 60 * 2);
 
 pub fn update_controlling_session_count(count: usize) {
     CONTROLLING_SESSION_COUNT.store(count, Ordering::SeqCst);
@@ -81,37 +81,61 @@ fn start_auto_update_check() -> Sender<UpdateMsg> {
     return tx;
 }
 
+/// 自动更新检查线程的入口函数
+///
+/// # 参数
+/// * `rx_msg` - 用于接收更新控制消息的通道接收端
 fn start_auto_update_check_(rx_msg: Receiver<UpdateMsg>) {
-    std::thread::sleep(Duration::from_secs(30));
+    // 初始延迟：启动后先等待1分钟再执行第一次检查
+    std::thread::sleep(Duration::from_secs(60));
+
+    // 执行首次更新检查
     if let Err(e) = check_update() {
         log::error!("Error checking for updates: {}", e);
     }
 
-    const MIN_INTERVAL: Duration = Duration::from_secs(60 * 10);
-    const RETRY_INTERVAL: Duration = Duration::from_secs(60 * 30);
-    let mut last_check_time = Instant::now();
-    let mut check_interval = DUR_TWO_HOUR;
+    // 常量定义
+    const MIN_INTERVAL: Duration = Duration::from_secs(60 * 10);  // 最小检查间隔：10分钟
+    const RETRY_INTERVAL: Duration = Duration::from_secs(60 * 30);  // 失败重试间隔：30分钟
+
+    // 状态变量初始化
+    let mut last_check_time = Instant::now();  // 记录上次成功检查的时间
+    let mut check_interval = UPDATE_CHECK_INTERVAL;  // 当前使用的检查间隔
+
+    // 主循环：持续监听更新消息
     loop {
+        // 等待消息，超时时间为当前检查间隔
         let recv_res = rx_msg.recv_timeout(check_interval);
+
         match &recv_res {
+            // 两种情况触发更新检查：
+            // 1. 收到显式的检查指令 (Ok(UpdateMsg::CheckUpdate))
+            // 2. 等待超时，即达到定期检查时间 (Err(_))
             Ok(UpdateMsg::CheckUpdate) | Err(_) => {
+                // 检查距离上次成功检查是否已超过最小间隔
                 if last_check_time.elapsed() < MIN_INTERVAL {
-                    // log::debug!("Update check skipped due to minimum interval.");
                     continue;
                 }
-                // Don't check update if there are alive connections.
+
+                // 检查当前是否存在活跃连接
                 if !has_no_active_conns() {
-                    check_interval = RETRY_INTERVAL;
+                    check_interval = RETRY_INTERVAL;  // 存在连接，延长检查间隔
                     continue;
                 }
+
+                // 执行更新检查
                 if let Err(e) = check_update() {
+                    // 检查失败：记录错误并延长下次检查间隔
                     log::error!("Error checking for updates: {}", e);
                     check_interval = RETRY_INTERVAL;
                 } else {
+                    // 检查成功：更新最后检查时间并恢复默认检查间隔
                     last_check_time = Instant::now();
-                    check_interval = DUR_TWO_HOUR;
+                    check_interval = UPDATE_CHECK_INTERVAL;
                 }
             }
+
+            // 收到退出指令，结束循环和线程
             Ok(UpdateMsg::Exit) => break,
         }
     }
@@ -208,10 +232,12 @@ fn update_new_version(is_msi: bool, file_path: &PathBuf) {
                     Ok(h) => {
                         if h.is_null() {
                             log::error!("Failed to update to the new version.");
+                            let _ = exe_update_fallback(p);
                         }
                     }
                     Err(e) => {
                         log::error!("Failed to run the new version: {}", e);
+                        let _ = exe_update_fallback(p);
                     }
                 }
             }
@@ -228,6 +254,45 @@ fn update_new_version(is_msi: bool, file_path: &PathBuf) {
             file_path.display()
         );
     }
+}
+
+#[cfg(target_os = "windows")]
+fn exe_update_fallback(exe_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    // EXE文件更新逻辑
+    let exe_path = std::path::Path::new(exe_path);
+    let exe_dir = exe_path.parent().unwrap();
+    let exe_filename = exe_path.file_name().unwrap().to_string_lossy();
+
+    // 获取更新批处理脚本内容
+    let cmd_content = format!(
+        "@echo off\r\nchcp 65001 >nul\r\ncd /d \"{}\"\r\n\"{}\" --update\r\n",
+        exe_dir.display(), exe_filename);
+
+    // 获取批处理文件创建路径
+    let temp_dir = std::env::temp_dir();
+    let now = chrono::Local::now();
+    let cmd_path: std::path::PathBuf = temp_dir.join(format!("update_{}.cmd", now.format("%Y-%m-%d %H:%M:%S")));
+
+    log::debug!("Temp dir: {}", temp_dir.display());
+    log::debug!("Cmd path: {}", cmd_path.display());
+
+    // 写入批处理文件
+    std::fs::write(&cmd_path, cmd_content.as_bytes())?;
+
+    log::debug!("Created .cmd file at: {}", cmd_path.display());
+
+    // 执行批处理文件
+    let output = std::process::Command::new("cmd.exe")
+        .arg("/C")
+        .arg(cmd_path.to_str().unwrap())
+        .output()?;
+
+    // 记录执行结果
+    log::debug!("Update script executed. Exit code: {:?}", output.status.code());
+    log::debug!("Stdout: {}", String::from_utf8_lossy(&output.stdout));
+    log::debug!("Stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    Ok(())
 }
 
 pub fn get_download_file_from_url(url: &str) -> Option<PathBuf> {

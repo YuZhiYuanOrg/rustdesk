@@ -974,19 +974,109 @@ pub fn check_software_update() {
     if is_custom_client() {
         return;
     }
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    let _ = do_check_software_update();
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
     std::thread::spawn(move || {
-        let _ = do_check_software_update();
         loop {
-            std::thread::sleep(std::time::Duration::from_secs(2 * 60 * 60));
             let _ = do_check_software_update();
+            std::thread::sleep(crate::updater::UPDATE_CHECK_INTERVAL);
         }
     });
 }
 
-// No need to check `danger_accept_invalid_cert` for now.
-// Because the url is always `https://api.rustdesk.com/version/latest`.
 #[tokio::main(flavor = "current_thread")]
 pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
+    log::info!("Starting software update check");
+    let update_server = check_update_via_update_server().await;
+    let (download_url, latest_release_version) = match update_server {
+        Ok((url, version)) if !url.is_empty() && !version.is_empty() => {
+            log::info!("Successfully checked update via update server");
+            (url, version)
+        },
+        Ok((url, version)) => {
+            log::warn!(
+                "Update server returned invalid data (url empty: {}, version empty: {})",
+                url.is_empty(),
+                version.is_empty()
+            );
+            #[cfg(target_os = "windows")]
+            {
+                match check_update_via_gitee().await {
+                    Ok((url, version)) => {
+                        log::info!("Successfully checked update via Gitee backup");
+                        (url, version)
+                    },
+                    Err(gitee_err) => {
+                        log::error!("Both update server and Gitee backup method failed. Gitee error: {:?}", gitee_err);
+                        *SOFTWARE_UPDATE_URL.lock().unwrap() = "".to_string();
+                        return Ok(());
+                    }
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                log::error!("Gitee backup method haven't been implemented for non-Windows platforms.");
+                *SOFTWARE_UPDATE_URL.lock().unwrap() = "".to_string();
+                return Ok(());
+            }
+        },
+        Err(update_server_err) => {
+            log::warn!(
+                "Failed to check update via update server: {:?}, trying Gitee backup method",
+                update_server_err
+            );
+            #[cfg(target_os = "windows")]
+            {
+                match check_update_via_gitee().await {
+                    Ok((url, version)) => {
+                        log::info!("Successfully checked update via Gitee backup");
+                        (url, version)
+                    },
+                    Err(gitee_err) => {
+                        log::error!("Both update server and Gitee backup method failed. Gitee error: {:?}", gitee_err);
+                        *SOFTWARE_UPDATE_URL.lock().unwrap() = "".to_string();
+                        return Ok(());
+                    }
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                log::error!("Gitee backup method haven't been implemented for non-Windows platforms.");
+                *SOFTWARE_UPDATE_URL.lock().unwrap() = "".to_string();
+                return Ok(());
+            }
+        }
+    };
+    process_update_result(download_url, latest_release_version).await
+}
+
+async fn process_update_result(download_url: String, latest_release_version: String) -> hbb_common::ResultType<()> {
+    let current_version_num = get_version_number(crate::VERSION);
+    let latest_version_num = get_version_number(&latest_release_version);
+    if latest_version_num > current_version_num {
+        log::info!("New version available: {} (current: {})", latest_release_version, crate::VERSION);
+        #[cfg(feature = "flutter")]
+        {
+            let mut m = HashMap::new();
+            m.insert("name", "check_software_update_finish");
+            m.insert("url", &download_url);
+            let _ = serde_json::to_string(&m).and_then(|data| {
+                let _ = crate::flutter::push_global_event(crate::flutter::APP_TYPE_MAIN, data);
+                Ok(())
+            });
+        }
+        *SOFTWARE_UPDATE_URL.lock().unwrap() = download_url.clone();
+        log::info!("Update URL set: {}", download_url);
+    } else {
+        log::info!("Software is up to date (current: {}, latest: {})", crate::VERSION, latest_release_version);
+        *SOFTWARE_UPDATE_URL.lock().unwrap() = "".to_string();
+    }
+    log::info!("Software update check completed successfully");
+    Ok(())
+}
+
+async fn check_update_via_update_server() -> hbb_common::ResultType<(String, String)> {
     let (request, url) = version_check_request(hbb_common::VER_TYPE_RUSTDESK_CLIENT.to_string());
     let proxy_conf = Config::get_socks();
     let tls_url = get_url_for_tls(&url, &proxy_conf);
@@ -1029,26 +1119,49 @@ pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
             return Err(e.into());
         }
     };
-    let download_url = resp.data.download_url;
-    let latest_release_version = resp.data.version;
-    let current_version_num = get_version_number(crate::VERSION);
-    let latest_version_num = get_version_number(&latest_release_version);
-    if latest_version_num > current_version_num {
-        #[cfg(feature = "flutter")]
-        {
-            let mut m = HashMap::new();
-            m.insert("name", "check_software_update_finish");
-            m.insert("url", &download_url);
-            let _ = serde_json::to_string(&m).and_then(|data| {
-                let _ = crate::flutter::push_global_event(crate::flutter::APP_TYPE_MAIN, data);
-                Ok(())
-            });
-        }
-        *SOFTWARE_UPDATE_URL.lock().unwrap() = download_url.clone();
+    Ok((resp.data.download_url, resp.data.version))
+}
+
+#[cfg(target_os = "windows")]
+async fn check_update_via_gitee() -> hbb_common::ResultType<(String, String)> {
+    let client = create_http_client_async(TlsType::Rustls, false);
+    let response = client
+        .get("https://gitee.com/ffishh/rustdesk/releases/latest")
+        .send()
+        .await?;
+    let final_url = response.url().clone();
+    let version = final_url
+        .path_segments()
+        .and_then(|segments| segments.last())
+        .unwrap_or_default()
+        .to_owned();
+    let download_url = build_windows_download_url(final_url.as_str());
+    Ok((download_url, version))
+}
+
+/// 根据版本发布页面URL构建Windows平台的下载链接
+///
+/// # 参数
+/// `update_url` - 版本发布页面URL
+///
+/// # 返回值
+/// 返回构建的下载链接字符串
+#[cfg(target_os = "windows")]
+fn build_windows_download_url(update_url: &str) -> String {
+    // 1. 将发布标签URL转换为下载目录URL
+    let download_url = update_url.replace("tag", "download");
+    // 2. 提取版本号（URL的最后一部分）
+    let version = download_url.split('/').last().unwrap_or_default();
+    // 3. 根据是否启用flutter特性构建下载链接
+    if cfg!(feature = "flutter") {
+        // Flutter版本：x86_64架构，可选择MSI或EXE格式
+        let is_msi = crate::platform::is_msi_installed().expect("REASON");
+        let extension = if is_msi { "msi" } else { "exe" };
+        format!("{}/rustdesk-{}-x86_64.{}", download_url, version, extension)
     } else {
-        *SOFTWARE_UPDATE_URL.lock().unwrap() = "".to_string();
+        // 非Flutter版本：x86架构，Sciter引擎，固定为EXE格式
+        format!("{}/rustdesk-{}-x86-sciter.exe", download_url, version)
     }
-    Ok(())
 }
 
 #[inline]
