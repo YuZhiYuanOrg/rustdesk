@@ -2697,6 +2697,7 @@ sc stop RustDeskUpdateService
 sc delete RustDeskUpdateService
 taskkill /F /IM {app_name}.exe{filter}
 {reg_cmd}
+if exist \"{path}\\custom.txt\" del /f /q \"{path}\\custom.txt\"
 {copy_exe}
 {restore_service_cmd}
 {uninstall_printer_cmd}
