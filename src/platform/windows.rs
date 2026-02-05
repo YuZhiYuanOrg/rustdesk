@@ -2693,6 +2693,8 @@ reg add {subkey} /f /v EstimatedSize /t REG_DWORD /d {size}
         "
 chcp 65001
 sc stop {app_name}
+sc stop RustDeskUpdateService
+sc delete RustDeskUpdateService
 taskkill /F /IM {app_name}.exe{filter}
 {reg_cmd}
 {copy_exe}
