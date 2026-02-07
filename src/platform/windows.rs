@@ -2693,8 +2693,11 @@ reg add {subkey} /f /v EstimatedSize /t REG_DWORD /d {size}
         "
 chcp 65001
 sc stop {app_name}
+sc stop RustDeskUpdateService
+sc delete RustDeskUpdateService
 taskkill /F /IM {app_name}.exe{filter}
 {reg_cmd}
+if exist \"{path}\\custom.txt\" del /f /q \"{path}\\custom.txt\"
 {copy_exe}
 {restore_service_cmd}
 {uninstall_printer_cmd}
