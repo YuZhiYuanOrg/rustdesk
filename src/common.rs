@@ -1155,7 +1155,7 @@ fn build_windows_download_url(update_url: &str) -> String {
     // 3. 根据是否启用flutter特性构建下载链接
     if cfg!(feature = "flutter") {
         // Flutter版本：x86_64架构，可选择MSI或EXE格式
-        let is_msi = crate::platform::is_msi_installed().expect("REASON");
+        let is_msi = crate::platform::is_msi_installed().unwrap_or(false);
         let extension = if is_msi { "msi" } else { "exe" };
         format!("{}/rustdesk-{}-x86_64.{}", download_url, version, extension)
     } else {
