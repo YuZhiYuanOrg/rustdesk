@@ -300,9 +300,6 @@ void runConnectionManagerScreen() async {
   listenUniLinks(handleByFlutter: false);
 }
 
-bool _isCmReadyToShow = false;
-
-
 hideCmWindow({bool isStartup = false}) async {
   if (isStartup) {
     WindowOptions windowOptions = getHiddenTitleBarWindowOptions(
@@ -312,14 +309,11 @@ hideCmWindow({bool isStartup = false}) async {
     bind.mainHideDock();
     await windowManager.minimize();
     await windowManager.hide();
-    _isCmReadyToShow = true;
-  } else if (_isCmReadyToShow) {
-    if (await windowManager.getOpacity() != 0) {
-      await windowManager.setOpacity(0);
-      bind.mainHideDock();
-      await windowManager.minimize();
-      await windowManager.hide();
-    }
+  } else {
+    await windowManager.setOpacity(0);
+    bind.mainHideDock();
+    await windowManager.minimize();
+    await windowManager.hide();
   }
 }
 
