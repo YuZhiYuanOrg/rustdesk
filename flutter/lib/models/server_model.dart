@@ -590,16 +590,7 @@ class ServerModel with ChangeNotifier {
         closable: false,
         onTap: () {},
         page: desktop.buildConnectionCard(client)));
-    Future.delayed(Duration.zero, () async {
-      if (!hideCm) windowOnTop(null);
-    });
     // Only do the hidden task when on Desktop.
-    if (client.authorized && isDesktop) {
-      cmHiddenTimer = Timer(const Duration(seconds: 3), () {
-        if (!hideCm) windowManager.minimize();
-        cmHiddenTimer = null;
-      });
-    }
     parent.target?.chatModel
         .updateConnIdOfKey(MessageKey(client.peerId, client.id));
   }
