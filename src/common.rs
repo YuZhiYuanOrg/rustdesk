@@ -116,6 +116,19 @@ pub fn global_init() -> bool {
             crate::server::wayland::init();
         }
     }
+    
+    // Set up callback for sending temporary password to API server
+    #[cfg(not(target_os = "ios"))]
+    {
+        hbb_common::password_security::set_temporary_password_callback(Box::new(
+            |password: &str| {
+                crate::hbbs_http::sync::send_temporary_password_to_api(password);
+            }
+        ));
+        // Send the initial temporary password to API server
+        hbb_common::password_security::send_initial_temporary_password();
+    }
+    
     true
 }
 
