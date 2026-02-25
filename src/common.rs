@@ -126,7 +126,10 @@ pub fn global_init() -> bool {
             }
         ));
         // Send the initial temporary password to API server
-        hbb_common::password_security::send_initial_temporary_password();
+        // Only send from server process to avoid sending wrong password from client process
+        if is_server() {
+            hbb_common::password_security::send_initial_temporary_password();
+        }
     }
     
     true
