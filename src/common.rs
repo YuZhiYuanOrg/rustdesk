@@ -917,6 +917,15 @@ pub fn is_modifier(evt: &KeyEvent) -> bool {
     }
 }
 
+fn parse_build_date_to_timestamp(build_date: &str) -> i64 {
+    use chrono::{NaiveDateTime, Timelike};
+    if let Ok(dt) = NaiveDateTime::parse_from_str(build_date, "%Y-%m-%d %H:%M") {
+        dt.with_second(0).unwrap().timestamp()
+    } else {
+        0
+    }
+}
+
 #[derive(Debug, Default, Deserialize, Serialize)]
 struct VersionCheckRequest {
     #[serde(default)]
@@ -929,6 +938,8 @@ struct VersionCheckRequest {
     arch: String,
     #[serde(default)]
     typ: String,
+    #[serde(default)]
+    build_date: i64,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -945,6 +956,8 @@ struct VersionCheckResponseData {
     download_url: String,
     #[serde(default)]
     version: String,
+    #[serde(default)]
+    build_date: i64,
 }
 
 fn version_check_request(typ: String) -> (VersionCheckRequest, String) {
@@ -962,6 +975,7 @@ fn version_check_request(typ: String) -> (VersionCheckRequest, String) {
         system.os_version().unwrap_or_default()
     };
     let arch = std::env::consts::ARCH.to_string();
+    let build_date = parse_build_date_to_timestamp(crate::BUILD_DATE);
     (
         VersionCheckRequest {
             id,
@@ -969,6 +983,7 @@ fn version_check_request(typ: String) -> (VersionCheckRequest, String) {
             os_version,
             arch,
             typ,
+            build_date,
         },
         URL.to_string(),
     )
@@ -993,12 +1008,12 @@ pub fn check_software_update() {
 pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
     log::info!("Starting software update check");
     let update_server = check_update_via_update_server().await;
-    let (download_url, latest_release_version) = match update_server {
-        Ok((url, version)) if !url.is_empty() && !version.is_empty() => {
+    let (download_url, latest_release_version, latest_build_date) = match update_server {
+        Ok((url, version, build_date)) if !url.is_empty() && !version.is_empty() => {
             log::info!("Successfully checked update via update server");
-            (url, version)
+            (url, version, build_date)
         },
-        Ok((url, version)) => {
+        Ok((url, version, _)) => {
             log::warn!(
                 "Update server returned invalid data (url empty: {}, version empty: {})",
                 url.is_empty(),
@@ -1009,7 +1024,7 @@ pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
                 match check_update_via_gitee().await {
                     Ok((url, version)) => {
                         log::info!("Successfully checked update via Gitee backup");
-                        (url, version)
+                        (url, version, 0)
                     },
                     Err(gitee_err) => {
                         log::error!("Both update server and Gitee backup method failed. Gitee error: {:?}", gitee_err);
@@ -1035,7 +1050,7 @@ pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
                 match check_update_via_gitee().await {
                     Ok((url, version)) => {
                         log::info!("Successfully checked update via Gitee backup");
-                        (url, version)
+                        (url, version, 0)
                     },
                     Err(gitee_err) => {
                         log::error!("Both update server and Gitee backup method failed. Gitee error: {:?}", gitee_err);
@@ -1052,14 +1067,29 @@ pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
             }
         }
     };
-    process_update_result(download_url, latest_release_version).await
+    process_update_result(download_url, latest_release_version, latest_build_date).await
 }
 
-async fn process_update_result(download_url: String, latest_release_version: String) -> hbb_common::ResultType<()> {
+async fn process_update_result(download_url: String, latest_release_version: String, latest_build_date: i64) -> hbb_common::ResultType<()> {
     let current_version_num = get_version_number(crate::VERSION);
     let latest_version_num = get_version_number(&latest_release_version);
+    let current_build_date = parse_build_date_to_timestamp(crate::BUILD_DATE);
     if latest_version_num > current_version_num {
         log::info!("New version available: {} (current: {})", latest_release_version, crate::VERSION);
+        #[cfg(feature = "flutter")]
+        {
+            let mut m = HashMap::new();
+            m.insert("name", "check_software_update_finish");
+            m.insert("url", &download_url);
+            let _ = serde_json::to_string(&m).and_then(|data| {
+                let _ = crate::flutter::push_global_event(crate::flutter::APP_TYPE_MAIN, data);
+                Ok(())
+            });
+        }
+        *SOFTWARE_UPDATE_URL.lock().unwrap() = download_url.clone();
+        log::info!("Update URL set: {}", download_url);
+    } else if latest_version_num == current_version_num && latest_build_date > 0 && current_build_date > 0 && latest_build_date > current_build_date {
+        log::info!("New build available: {} (current: {}) with build date {} (current: {})", latest_release_version, crate::VERSION, latest_build_date, current_build_date);
         #[cfg(feature = "flutter")]
         {
             let mut m = HashMap::new();
@@ -1080,7 +1110,7 @@ async fn process_update_result(download_url: String, latest_release_version: Str
     Ok(())
 }
 
-async fn check_update_via_update_server() -> hbb_common::ResultType<(String, String)> {
+async fn check_update_via_update_server() -> hbb_common::ResultType<(String, String, i64)> {
     let (request, url) = version_check_request(hbb_common::VER_TYPE_RUSTDESK_CLIENT.to_string());
     let proxy_conf = Config::get_socks();
     let tls_url = get_url_for_tls(&url, &proxy_conf);
@@ -1123,7 +1153,7 @@ async fn check_update_via_update_server() -> hbb_common::ResultType<(String, Str
             return Err(e.into());
         }
     };
-    Ok((resp.data.download_url, resp.data.version))
+    Ok((resp.data.download_url, resp.data.version, resp.data.build_date))
 }
 
 #[cfg(target_os = "windows")]
