@@ -531,7 +531,8 @@ jobs:
               {
                 "name": "rustdesk-api",
                 "url": "https://rustdesk-api.digitalexhibition.top/api/version/upload",
-                "token": "${{ secrets.RELEASE_SYNC_TOKEN }}"
+                "token": "${{ secrets.RELEASE_SYNC_TOKEN }}",
+                "upload_type": "form-data"
               }
             ]
           asset-files: |
