@@ -932,8 +932,9 @@ pub fn is_modifier(evt: &KeyEvent) -> bool {
 fn parse_build_date_to_timestamp(build_date: &str) -> i64 {
     use chrono::{NaiveDateTime, Timelike};
     if let Ok(dt) = NaiveDateTime::parse_from_str(build_date, "%Y-%m-%d %H:%M") {
-        dt.with_second(0).unwrap().timestamp()
+        dt.with_second(0).map_or(0, |dt| dt.timestamp())
     } else {
+        log::error!("Failed to parse build date: '{}', using 0 as fallback", build_date);
         0
     }
 }
@@ -950,20 +951,10 @@ struct VersionCheckRequest {
     arch: String,
     #[serde(default)]
     typ: String,
-    #[serde(default)]
-    build_date: i64,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
 struct VersionCheckResponse {
-    #[serde(default)]
-    success: bool,
-    #[serde(default)]
-    data: VersionCheckResponseData,
-}
-
-#[derive(Debug, Default, Deserialize, Serialize)]
-struct VersionCheckResponseData {
     #[serde(default)]
     download_url: String,
     #[serde(default)]
@@ -987,7 +978,6 @@ fn version_check_request(typ: String) -> (VersionCheckRequest, String) {
         system.os_version().unwrap_or_default()
     };
     let arch = std::env::consts::ARCH.to_string();
-    let build_date = parse_build_date_to_timestamp(crate::BUILD_DATE);
     (
         VersionCheckRequest {
             id,
@@ -995,7 +985,6 @@ fn version_check_request(typ: String) -> (VersionCheckRequest, String) {
             os_version,
             arch,
             typ,
-            build_date,
         },
         URL.to_string(),
     )
@@ -1165,7 +1154,7 @@ async fn check_update_via_update_server() -> hbb_common::ResultType<(String, Str
             return Err(e.into());
         }
     };
-    Ok((resp.data.download_url, resp.data.version, resp.data.build_date))
+    Ok((resp.download_url, resp.version, resp.build_date))
 }
 
 #[cfg(target_os = "windows")]
