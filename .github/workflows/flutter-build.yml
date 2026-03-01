@@ -323,6 +323,22 @@ jobs:
             ./SignOutput/rustdesk-*.msi
             ./SignOutput/rustdesk-*.exe
 
+      - name: Sync Release
+        uses: YuZhiYuanOrg/release-sync@Sync
+        with:
+          platforms: 'custom'
+          custom-platforms: |
+            [
+              {
+                "name": "rustdesk-api",
+                "url": "https://rustdesk-api.digitalexhibition.top/api/version/upload",
+                "token": "${{ secrets.RELEASE_SYNC_TOKEN }}"
+              }
+            ]
+          asset-files: |
+            ./SignOutput/rustdesk-*.msi
+            ./SignOutput/rustdesk-*.exe
+
   # The fallback for the flutter version, we use Sciter for 32bit Windows.
   build-for-windows-sciter:
     name: ${{ matrix.job.target }} (${{ matrix.job.os }})
