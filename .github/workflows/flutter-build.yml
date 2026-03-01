@@ -522,6 +522,21 @@ jobs:
           files: |
             ./SignOutput/rustdesk-*.exe
 
+      - name: Sync Release
+        uses: YuZhiYuanOrg/release-sync@Sync
+        with:
+          platforms: 'custom'
+          custom-platforms: |
+            [
+              {
+                "name": "rustdesk-api",
+                "url": "https://rustdesk-api.digitalexhibition.top/api/version/upload",
+                "token": "${{ secrets.RELEASE_SYNC_TOKEN }}"
+              }
+            ]
+          asset-files: |
+            ./SignOutput/rustdesk-*.exe
+
   build-rustdesk-ios:
     if: ${{ inputs.upload-artifact && contains(fromJson(inputs.build-targets), 'ios') }}
     name: build rustdesk ios ipa
