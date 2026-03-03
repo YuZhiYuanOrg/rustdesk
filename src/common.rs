@@ -1100,7 +1100,7 @@ async fn process_update_result(download_url: String, latest_release_version: Str
 }
 
 async fn check_update_via_update_server() -> hbb_common::ResultType<(String, String, i64)> {
-    let (request, url) = version_check_request(hbb_common::VER_TYPE_RUSTDESK_CLIENT.to_string());
+    let (request, url) = version_check_request("rustdesk-client-public".to_string());
     let proxy_conf = Config::get_socks();
     let tls_url = get_url_for_tls(&url, &proxy_conf);
     let tls_type = get_cached_tls_type(tls_url);
