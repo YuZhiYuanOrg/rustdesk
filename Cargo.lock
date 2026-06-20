@@ -4762,9 +4762,9 @@ dependencies = [
 
 [[package]]
 name = "libpulse-simple-sys"
-version = "1.22.0"
+version = "1.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3bd96888fe37ad270d16abf5e82cccca1424871cf6afa2861824d2a52758eebc"
+checksum = "1df43ccf72bd565346b7e540a2e5e118f1e14b5fbabd4cde300ecb382fafaa95"
 dependencies = [
  "libpulse-sys",
  "pkg-config",
@@ -4772,12 +4772,12 @@ dependencies = [
 
 [[package]]
 name = "libpulse-sys"
-version = "1.23.0"
+version = "1.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d74371848b22e989f829cc1621d2ebd74960711557d8b45cfe740f60d0a05e61"
+checksum = "bc19e110fbf42c17260d30f6d3dc545f58491c7830d38ecb9aaca96e26067a9b"
 dependencies = [
  "libc",
- "num-derive 0.4.2",
+ "num-derive 0.3.3",
  "num-traits 0.2.19",
  "pkg-config",
  "winapi 0.3.9",
