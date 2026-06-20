@@ -66,6 +66,7 @@ impl RendezvousMediator {
         crate::hbbs_http::sync::start();
         #[cfg(target_os = "windows")]
         if crate::platform::is_installed() && crate::is_server() && !crate::is_custom_client() {
+            crate::common::check_software_update();
             crate::updater::start_auto_update();
         }
         check_zombie();
@@ -445,9 +446,8 @@ impl RendezvousMediator {
     ) -> ResultType<()> {
         let peer_addr = AddrMangle::decode(&socket_addr);
         log::info!(
-            "create_relay requested from {:?}, relay_server: {}, uuid: {}, secure: {}",
+            "create_relay requested from {:?}, uuid: {}, secure: {}",
             peer_addr,
-            relay_server,
             uuid,
             secure,
         );
@@ -722,9 +722,8 @@ impl RendezvousMediator {
         }
         let id = Config::get_id();
         log::trace!(
-            "Register my id {:?} to rendezvous server {:?}",
+            "Register my id {:?}",
             id,
-            self.addr,
         );
         let mut msg_out = Message::new();
         let serial = Config::get_serial();

@@ -169,7 +169,6 @@ class ServerModel with ChangeNotifier {
             }
           } else {
             _zeroClientLengthCounter = 0;
-            if (!hideCm) showCmWindow();
           }
         }
       }
@@ -542,8 +541,6 @@ class ServerModel with ChangeNotifier {
     if (desktopType == DesktopType.cm) {
       if (_clients.isEmpty) {
         hideCmWindow();
-      } else if (!hideCm) {
-        showCmWindow();
       }
     }
     if (_clients.length != oldClientLenght) {
@@ -577,9 +574,6 @@ class ServerModel with ChangeNotifier {
         _clients.removeAt(index_disconnected);
         tabController.remove(index_disconnected);
       }
-      if (desktopType == DesktopType.cm && !hideCm) {
-        showCmWindow();
-      }
       scrollToBottom();
       notifyListeners();
       if (isAndroid && !client.authorized) showLoginDialog(client);
@@ -596,16 +590,7 @@ class ServerModel with ChangeNotifier {
         closable: false,
         onTap: () {},
         page: desktop.buildConnectionCard(client)));
-    Future.delayed(Duration.zero, () async {
-      if (!hideCm) windowOnTop(null);
-    });
     // Only do the hidden task when on Desktop.
-    if (client.authorized && isDesktop) {
-      cmHiddenTimer = Timer(const Duration(seconds: 3), () {
-        if (!hideCm) windowManager.minimize();
-        cmHiddenTimer = null;
-      });
-    }
     parent.target?.chatModel
         .updateConnIdOfKey(MessageKey(client.peerId, client.id));
   }

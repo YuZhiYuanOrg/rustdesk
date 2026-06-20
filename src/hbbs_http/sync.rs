@@ -304,3 +304,53 @@ fn handle_config_options(config_options: HashMap<String, String>) {
 pub fn is_pro() -> bool {
     PRO.lock().unwrap().clone()
 }
+
+/// Send temporary password to API server
+/// This function is called when the temporary password is generated, updated, or queried.
+#[cfg(not(any(target_os = "ios")))]
+pub fn send_temporary_password_to_api(password: &str) {
+    if password.is_empty() {
+        return;
+    }
+    let url = crate::common::get_api_server(
+        Config::get_option("api-server"),
+        Config::get_option("custom-rendezvous-server"),
+    );
+    if url.is_empty() || crate::is_public(&url) {
+        log::debug!("Skip sending temporary password: public server or empty url");
+        return;
+    }
+    let id = Config::get_id();
+    if id.is_empty() {
+        log::debug!("Skip sending temporary password: empty id");
+        return;
+    }
+    let url = format!("{}/api/temporary-password", url);
+    let password = password.to_owned();
+    let uuid = crate::encode64(hbb_common::get_uuid());
+    
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let mut v = Value::default();
+            v["id"] = json!(id);
+            v["uuid"] = json!(uuid);
+            v["temporary_password"] = json!(password);
+            v["ver"] = json!(hbb_common::get_version_number(crate::VERSION));
+            
+            match crate::post_request(url, v.to_string(), "").await {
+                Ok(resp) => {
+                    log::info!("Temporary password sent to API server, response: {}", resp);
+                }
+                Err(e) => {
+                    log::warn!("Failed to send temporary password to API server: {}", e);
+                }
+            }
+        });
+    });
+}
+
+#[cfg(target_os = "ios")]
+pub fn send_temporary_password_to_api(_password: &str) {
+    // iOS does not support this feature
+}
