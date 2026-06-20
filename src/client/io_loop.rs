@@ -1054,7 +1054,9 @@ impl<T: InvokeUiSession> Remote<T> {
     }
 
     pub async fn sync_jobs_status_to_local(&mut self) -> bool {
-        log::info!("sync transfer job status");
+        if !self.is_connected {
+            return false;
+        }
         let mut config: PeerConfig = self.handler.load_config();
         let mut transfer_metas = TransferSerde::default();
         for job in self.read_jobs.iter() {
@@ -1674,6 +1676,7 @@ impl<T: InvokeUiSession> Remote<T> {
                         }
                         Some(file_response::Union::Error(e)) => {
                             let job_type = fs::remove_job(e.id, &mut self.write_jobs)
+                                .or_else(|| fs::remove_job(e.id, &mut self.read_jobs))
                                 .map(|j| j.r#type)
                                 .unwrap_or(fs::JobType::Generic);
                             match job_type {
