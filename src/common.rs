@@ -72,6 +72,19 @@ pub mod input {
     pub const MOUSE_TYPE_UP: i32 = 2;
     pub const MOUSE_TYPE_WHEEL: i32 = 3;
     pub const MOUSE_TYPE_TRACKPAD: i32 = 4;
+    /// Relative mouse movement type for gaming/3D applications.
+    /// This type sends delta (dx, dy) values instead of absolute coordinates.
+    /// NOTE: This is only supported by the Flutter client. The Sciter client (deprecated)
+    /// does not support relative mouse mode due to:
+    /// 1. Fixed send_mouse() function signature that doesn't allow type differentiation
+    /// 2. Lack of pointer lock API in Sciter/TIS
+    /// 3. No OS cursor control (hide/show/clip) FFI bindings in Sciter UI
+    pub const MOUSE_TYPE_MOVE_RELATIVE: i32 = 5;
+
+    /// Mask to extract the mouse event type from the mask field.
+    /// The lower 3 bits contain the event type (MOUSE_TYPE_*), giving a valid range of 0-7.
+    /// Currently defined types use values 0-5; values 6 and 7 are reserved for future use.
+    pub const MOUSE_TYPE_MASK: i32 = 0x7;
 
     pub const MOUSE_BUTTON_LEFT: i32 = 0x01;
     pub const MOUSE_BUTTON_RIGHT: i32 = 0x02;
@@ -192,10 +205,36 @@ pub fn is_support_file_transfer_resume_num(ver: i64) -> bool {
     ver >= hbb_common::get_version_number("1.4.2")
 }
 
+/// Minimum server version required for relative mouse mode support.
+/// This constant must mirror Flutter's `kMinVersionForRelativeMouseMode` in `consts.dart`.
+const MIN_VERSION_RELATIVE_MOUSE_MODE: &str = "1.4.5";
+
+#[inline]
+pub fn is_support_relative_mouse_mode(ver: &str) -> bool {
+    is_support_relative_mouse_mode_num(hbb_common::get_version_number(ver))
+}
+
+#[inline]
+pub fn is_support_relative_mouse_mode_num(ver: i64) -> bool {
+    ver >= hbb_common::get_version_number(MIN_VERSION_RELATIVE_MOUSE_MODE)
+}
+
 // is server process, with "--server" args
 #[inline]
 pub fn is_server() -> bool {
     *IS_SERVER
+}
+
+#[inline]
+pub fn need_fs_cm_send_files() -> bool {
+    #[cfg(windows)]
+    {
+        is_server()
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
 }
 
 #[inline]
@@ -917,16 +956,6 @@ pub fn is_modifier(evt: &KeyEvent) -> bool {
     }
 }
 
-fn parse_build_date_to_timestamp(build_date: &str) -> i64 {
-    use chrono::{NaiveDateTime, Timelike};
-    if let Ok(dt) = NaiveDateTime::parse_from_str(build_date, "%Y-%m-%d %H:%M") {
-        dt.with_second(0).map_or(0, |dt| dt.timestamp())
-    } else {
-        log::error!("Failed to parse build date: '{}', using 0 as fallback", build_date);
-        0
-    }
-}
-
 #[derive(Debug, Default, Deserialize, Serialize)]
 struct VersionCheckRequest {
     #[serde(default)]
@@ -944,11 +973,17 @@ struct VersionCheckRequest {
 #[derive(Debug, Default, Deserialize, Serialize)]
 struct VersionCheckResponse {
     #[serde(default)]
+    success: bool,
+    #[serde(default)]
+    data: VersionCheckResponseData,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+struct VersionCheckResponseData {
+    #[serde(default)]
     download_url: String,
     #[serde(default)]
     version: String,
-    #[serde(default)]
-    build_date: i64,
 }
 
 fn version_check_request(typ: String) -> (VersionCheckRequest, String) {
@@ -997,12 +1032,12 @@ pub fn check_software_update() {
 pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
     log::info!("Starting software update check");
     let update_server = check_update_via_update_server().await;
-    let (download_url, latest_release_version, latest_build_date) = match update_server {
-        Ok((url, version, build_date)) if !url.is_empty() && !version.is_empty() => {
+    let (download_url, latest_release_version) = match update_server {
+        Ok((url, version)) if !url.is_empty() && !version.is_empty() => {
             log::info!("Successfully checked update via update server");
-            (url, version, build_date)
+            (url, version)
         },
-        Ok((url, version, _)) => {
+        Ok((url, version)) => {
             log::warn!(
                 "Update server returned invalid data (url empty: {}, version empty: {})",
                 url.is_empty(),
@@ -1013,7 +1048,7 @@ pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
                 match check_update_via_gitee().await {
                     Ok((url, version)) => {
                         log::info!("Successfully checked update via Gitee backup");
-                        (url, version, 0)
+                        (url, version)
                     },
                     Err(gitee_err) => {
                         log::error!("Both update server and Gitee backup method failed. Gitee error: {:?}", gitee_err);
@@ -1039,7 +1074,7 @@ pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
                 match check_update_via_gitee().await {
                     Ok((url, version)) => {
                         log::info!("Successfully checked update via Gitee backup");
-                        (url, version, 0)
+                        (url, version)
                     },
                     Err(gitee_err) => {
                         log::error!("Both update server and Gitee backup method failed. Gitee error: {:?}", gitee_err);
@@ -1056,29 +1091,14 @@ pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
             }
         }
     };
-    process_update_result(download_url, latest_release_version, latest_build_date).await
+    process_update_result(download_url, latest_release_version).await
 }
 
-async fn process_update_result(download_url: String, latest_release_version: String, latest_build_date: i64) -> hbb_common::ResultType<()> {
+async fn process_update_result(download_url: String, latest_release_version: String) -> hbb_common::ResultType<()> {
     let current_version_num = get_version_number(crate::VERSION);
     let latest_version_num = get_version_number(&latest_release_version);
-    let current_build_date = parse_build_date_to_timestamp(crate::BUILD_DATE);
     if latest_version_num > current_version_num {
         log::info!("New version available: {} (current: {})", latest_release_version, crate::VERSION);
-        #[cfg(feature = "flutter")]
-        {
-            let mut m = HashMap::new();
-            m.insert("name", "check_software_update_finish");
-            m.insert("url", &download_url);
-            let _ = serde_json::to_string(&m).and_then(|data| {
-                let _ = crate::flutter::push_global_event(crate::flutter::APP_TYPE_MAIN, data);
-                Ok(())
-            });
-        }
-        *SOFTWARE_UPDATE_URL.lock().unwrap() = download_url.clone();
-        log::info!("Update URL set: {}", download_url);
-    } else if latest_version_num == current_version_num && latest_build_date > 0 && current_build_date > 0 && latest_build_date > current_build_date {
-        log::info!("New build available: {} (current: {}) with build date {} (current: {})", latest_release_version, crate::VERSION, latest_build_date, current_build_date);
         #[cfg(feature = "flutter")]
         {
             let mut m = HashMap::new();
@@ -1099,8 +1119,8 @@ async fn process_update_result(download_url: String, latest_release_version: Str
     Ok(())
 }
 
-async fn check_update_via_update_server() -> hbb_common::ResultType<(String, String, i64)> {
-    let (request, url) = version_check_request("rustdesk-client-public".to_string());
+async fn check_update_via_update_server() -> hbb_common::ResultType<(String, String)> {
+    let (request, url) = version_check_request(hbb_common::VER_TYPE_RUSTDESK_CLIENT.to_string());
     let proxy_conf = Config::get_socks();
     let tls_url = get_url_for_tls(&url, &proxy_conf);
     let tls_type = get_cached_tls_type(tls_url);
@@ -1142,7 +1162,7 @@ async fn check_update_via_update_server() -> hbb_common::ResultType<(String, Str
             return Err(e.into());
         }
     };
-    Ok((resp.download_url, resp.version, resp.build_date))
+    Ok((resp.data.download_url, resp.data.version))
 }
 
 #[cfg(target_os = "windows")]
@@ -1277,7 +1297,7 @@ fn get_api_server_(api: String, custom: String) -> String {
 
 #[inline]
 pub fn is_public(url: &str) -> bool {
-    url.contains("rustdesk.com")
+    url.contains("rustdesk.com/") || url.ends_with("rustdesk.com")
 }
 
 pub fn get_udp_punch_enabled() -> bool {
@@ -2491,6 +2511,28 @@ pub fn str2color(s: &str, alpha: u8) -> u32 {
     (alpha as u32) << 24 | rgb
 }
 
+/// Check control permission state from a u64 bitmap.
+/// Each permission uses 2 bits: 0 = not set, 1 = disable, 2 = enable, 3 = invalid (treated as not set)
+/// Returns: Some(true) = enabled, Some(false) = disabled, None = not set or invalid
+pub fn get_control_permission(
+    permissions: u64,
+    permission: hbb_common::rendezvous_proto::control_permissions::Permission,
+) -> Option<bool> {
+    use hbb_common::protobuf::Enum;
+    let index = permission.value();
+    if index >= 0 && index < 32 {
+        let shift = index * 2;
+        let value = (permissions >> shift) & 0b11;
+        match value {
+            1 => Some(false), // disable
+            2 => Some(true),  // enable
+            _ => None,        // 0 = not set, 3 = invalid
+        }
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2630,5 +2672,60 @@ mod tests {
             Duration::from_secs_f64(dur.as_secs_f64() * 0.499 * 1e-9),
             Duration::from_nanos(0)
         );
+    }
+
+    #[test]
+    fn test_is_public() {
+        // Test URLs containing "rustdesk.com/"
+        assert!(is_public("https://rustdesk.com/"));
+        assert!(is_public("https://www.rustdesk.com/"));
+        assert!(is_public("https://api.rustdesk.com/v1"));
+        assert!(is_public("https://rustdesk.com/path"));
+
+        // Test URLs ending with "rustdesk.com"
+        assert!(is_public("rustdesk.com"));
+        assert!(is_public("https://rustdesk.com"));
+        assert!(is_public("http://www.rustdesk.com"));
+        assert!(is_public("https://api.rustdesk.com"));
+
+        // Test non-public URLs
+        assert!(!is_public("https://example.com"));
+        assert!(!is_public("https://custom-server.com"));
+        assert!(!is_public("http://192.168.1.1"));
+        assert!(!is_public("localhost"));
+        assert!(!is_public("https://rustdesk.computer.com"));
+        assert!(!is_public("rustdesk.comhello.com"));
+    }
+
+    #[test]
+    fn test_mouse_event_constants_and_mask_layout() {
+        use super::input::*;
+
+        // Verify MOUSE_TYPE constants are unique and within the mask range.
+        let types = [
+            MOUSE_TYPE_MOVE,
+            MOUSE_TYPE_DOWN,
+            MOUSE_TYPE_UP,
+            MOUSE_TYPE_WHEEL,
+            MOUSE_TYPE_TRACKPAD,
+            MOUSE_TYPE_MOVE_RELATIVE,
+        ];
+
+        let mut seen = std::collections::HashSet::new();
+        for t in types.iter() {
+            assert!(seen.insert(*t), "Duplicate mouse type: {}", t);
+            assert_eq!(
+                *t & MOUSE_TYPE_MASK,
+                *t,
+                "Mouse type {} exceeds mask {}",
+                t,
+                MOUSE_TYPE_MASK
+            );
+        }
+
+        // The mask layout is: lower 3 bits for type, upper bits for buttons (shifted by 3).
+        let combined_mask = MOUSE_TYPE_DOWN | ((MOUSE_BUTTON_LEFT | MOUSE_BUTTON_RIGHT) << 3);
+        assert_eq!(combined_mask & MOUSE_TYPE_MASK, MOUSE_TYPE_DOWN);
+        assert_eq!(combined_mask >> 3, MOUSE_BUTTON_LEFT | MOUSE_BUTTON_RIGHT);
     }
 }
